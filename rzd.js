@@ -19,7 +19,7 @@
 
     app.value(
         'RZD_TIME_FORMAT',
-        'HH.mm'
+        'HH:mm'
     );
 
     app.factory('stationsSuggester', ['$resource', 'GLOBAL_CONFIG',
