@@ -92,7 +92,7 @@
                     params: {kind: 'list'},
                     responseType: "json",
                     isArray: true,
-                    transformResponse: function (data, headersGetter) {
+                    transformResponse: function (data) {
                         var rows = data.rows,
                             for_date, now, current_date, current_time,
                             not_this_day,
@@ -134,11 +134,10 @@
 
             for (key in o) {
                 if (o.hasOwnProperty(key) && (!skip_empty_items || o[key])) {
-                    res.push(
-                        encodeURIComponent(key) +
-                        '=' +
+                    res.push([
+                        encodeURIComponent(key),
                         (skip_enc && o[key] || encodeURIComponent(o[key]))
-                    );
+                    ].join('='));
                 }
             }
 
@@ -160,11 +159,11 @@
             getWSConnection = (function () {
                 var connection;
 
-                function Constructor() {
+                function WSConstructor() {
                     this.connect();
                 }
 
-                Constructor.prototype.connect = function () {
+                WSConstructor.prototype.connect = function () {
                     var reconnect = this.reconnect.bind(this);
 
                     if (this.ws) {
@@ -175,18 +174,18 @@
                         }
                     }
 
-                    this.ws = new WebSocket(["ws://",
-                        GLOBAL_CONFIG.api_host,// || $window.location.host,
-                        GLOBAL_CONFIG.api_prefix,
-                        "ws"
-                    ].join(''));
+                    this.ws = new $window.WebSocket(["ws://",
+                            GLOBAL_CONFIG.api_host,
+                            GLOBAL_CONFIG.api_prefix,
+                            "ws"
+                        ].join(''));
 
 
-                    this.ws.onmessage = function (event) {
+                    this.ws.onmessage = function () {
                         var msg = event.data,
                             parts = msg.split(' '),
                             task_key = parts.shift(),
-                            task = Task.get(task_key);
+                            task = Task.getByKey(task_key);
 
                         console.log('ws <= ' + msg);
 
@@ -195,24 +194,23 @@
                         }
                     };
 
-                    this.ws.onclose = function (evt) {
+                    this.ws.onclose = function () {
                         console.log("Connection close");
-                        window.setTimeout(reconnect, 5000);
+                        $window.setTimeout(reconnect, 5000);
                     };
                 };
 
-                Constructor.prototype.reconnect = function () {
-                    var self = this;
+                WSConstructor.prototype.reconnect = function () {
+                    var that = this;
 
                     this.connect();
 
-                    //TODO: onconnect
-                    Task.all(function (task) {
-                        task.fallback(self);
+                    Task.getAll(function (task) {
+                        task.recover(that);
                     });
                 };
 
-                Constructor.prototype.send = function (msg) {
+                WSConstructor.prototype.send = function (msg) {
                     console.log('ws => ' + msg);
 
                     if (this.ws.readyState === this.ws.CONNECTING) {
@@ -228,7 +226,7 @@
 
                 return function () {
                     if (connection === undefined) {
-                        connection = new Constructor();
+                        connection = new WSConstructor();
                     }
 
                     return connection;
@@ -247,7 +245,7 @@
                 this.input.train_num = train_num;
                 this.input.seat_type = seat_type;
                 this.input.car_num = car_num || '';
-                this.input.seat_num = seat_pos || '';
+                this.input.seat_num = seat_num || '';
                 this.input.seat_pos = seat_pos || '';
 
                 this.key = encodeDict(this.input, true, true);
@@ -261,7 +259,7 @@
 
             Task = function (from, to, date, s_from, s_to) {
                 var key = [this.TYPE, from, to, date].join(','),
-                    instance = Task.get(key);
+                    instance = Task.getByKey(key);
 
                 if (instance) {
                     return instance;
@@ -294,11 +292,11 @@
                 task_registry[key] = this;
             };
 
-            Task.get = function (key) {
+            Task.getByKey = function (key) {
                 return task_registry[key];
             };
 
-            Task.all = function (callback) {
+            Task.getAll = function (callback) {
                 angular.forEach(task_registry, callback);
             };
 
@@ -310,8 +308,8 @@
                 TYPE: 'list'
             };
 
-            Task.prototype.fallback = function (connection) {
-                var self = this,
+            Task.prototype.recover = function (connection) {
+                var that = this,
                     succeeded_cnt = 0;
 
                 if (this.isActive()) {
@@ -319,9 +317,9 @@
 
                     angular.forEach(this.watchers, function (watcher) {
                         if (!watcher.succeeded) {
-                            self._addWatcher(watcher, connection);
+                            that._addWatcher(watcher, connection);
                         } else {
-                            succeeded_cnt = succeeded_cnt + 1;
+                            succeeded_cnt += 1;
                         }
                     });
 
@@ -360,7 +358,7 @@
             };
 
             Task.prototype.removeWatcher = function (w_key, hardly) {
-                if (w_key in this.watchers) {
+                if (this.watchers[w_key] !== undefined) {
                     if (hardly) {
                         delete this.watchers[w_key];
                     }
@@ -394,12 +392,10 @@
             );
 
             Task.prototype.processReport = function (msg) {
-                var self = this,
+                var that = this,
                     data;
 
-                if (this.inconsiderableMsgTmpl.test(msg)) {
-                    //nothing to do
-                } else {
+                if (!this.inconsiderableMsgTmpl.test(msg)) {
                     if (this.state.waiting_for_result) {
                         this.state.waiting_for_result = false;
                         data = JSON.parse(msg);
@@ -407,10 +403,10 @@
                         angular.forEach(data, function (train_data, train_num) {
                             angular.forEach(train_data, function (v, w_key) {
                                 console.log(w_key);
-                                self.watchers[w_key].claim_success();
+                                that.watchers[w_key].claim_success();
                                 //watchers being removed on server automatically
                                 //at a moment of success
-                                //self.removeWatcher(w_key);
+                                //that.removeWatcher(w_key);
                             });
 
                             if (this.on_success) {
@@ -422,18 +418,18 @@
                     } else if (msg.length === 2) {
                         this.state.status = parseInt(msg[0], 10);
                         if (msg[1] === '-') {
-                            this.state.errors_happened++;
+                            this.state.errors_happened += 1;
                         } else if (msg[1] === '!') {
                             this.state.waiting_for_result = true;
                         } else {
                             this.state.errors_happened = 0;
                         }
-                        this.state.attempts_done++;
+                        this.state.attempts_done += 1;
                     }
                 }
 
-                if (this.on_update) {
-                    this.on_update();
+                if (this.onUpdate) {
+                    this.onUpdate();
                 }
             };
 
