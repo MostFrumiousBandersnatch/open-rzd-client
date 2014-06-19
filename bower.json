@@ -2,9 +2,15 @@
     "name": "open-rzd-client",
     "version": "0.5.0",
     "main": "rzd.js",
-    "ignore": [],
+    "ignore": [
+        "test/*",
+        ".gitignore"
+    ],
     "dependencies": {
         "angular": "~1.2.0",
         "angular-resource": "~1.2.0"
+    },
+    "devDependencies": {
+        "angualar-mocks": "~1.2.0"
     }
 }
