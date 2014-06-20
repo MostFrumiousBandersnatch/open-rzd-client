@@ -387,9 +387,7 @@
                 return this;
             };
 
-            Task.prototype.inconsiderableMsgTmpl = new RegExp(
-                '^(\\+W|\\-W|stopped)'
-            );
+            Task.prototype.inconsiderableMsgTmpl = /^(\+W|\-W|stopped)/;
 
             Task.prototype.processReport = function (msg) {
                 var that = this,
