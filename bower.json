@@ -11,6 +11,6 @@
         "angular-resource": "~1.2.0"
     },
     "devDependencies": {
-        "angualar-mocks": "~1.2.0"
+        "angular-mocks": "~1.2.0"
     }
 }

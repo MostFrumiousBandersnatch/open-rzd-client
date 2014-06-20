@@ -1,0 +1,17 @@
+{
+    "name": "open-rzd-client",
+    "version": "0.5.0",
+    "dependencies": {
+        "bower": "~1.2.8"
+    },
+
+    "devDependencies": {
+        "karma": "0.10.8",
+        "karma-jasmine": "0.1.5",
+        "karma-chrome-launcher": "0.1.4"
+    },
+
+    "engines": {
+        "node": ">=0.8.0"
+    }
+}
