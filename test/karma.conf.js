@@ -20,7 +20,8 @@ module.exports = function(config) {
             'bower_components/angular-mocks/angular-mocks.js',
             'test/test.config.js',
             'rzd.js',
-            'test/test.js'
+            'test/test.js',
+            'test/data/*.json'
         ],
 
 
@@ -29,12 +30,18 @@ module.exports = function(config) {
 
         ],
 
-
         // preprocess matching files before serving them to the browser
         // available preprocessors: https://npmjs.org/browse/keyword/karma-preprocessor
         preprocessors: {
-
+            'test/data/*.json': ['ng-html2js']
         },
+
+        ngHtml2JsPreprocessor: {
+            // strip this from the file path
+            stripPrefix: 'test/data/',
+            moduleName: 'fixtures'
+        },
+
 
 
         // test results reporter to use

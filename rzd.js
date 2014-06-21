@@ -110,7 +110,8 @@
                             not_this_day = for_date !== current_date;
 
                             rows.forEach(function (item) {
-                                if (not_this_day || item.value.time0 > current_time) {
+                                if (not_this_day ||
+                                    item.value.time0 > current_time) {
                                     result.push(item.value);
                                 }
                             });
