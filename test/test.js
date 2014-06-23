@@ -71,6 +71,41 @@ describe('RZD open API client', function () {
             StorageLookup,
             GlobalConfig;
 
+        function testTrainListForJune22th(pseudo_now, expected_trains_count) {
+            return inject(function ($templateCache, $filter, RZD_TIME_FORMAT) {
+                var response;
+
+                $httpBackend.expectGET(
+                    'http://' + GlobalConfig.api_host +
+                    GlobalConfig.storage_prefix +
+                    'fetch/list?date=22.06.2014&from=200000&to=2060150'
+                ).respond(
+                    JSON.parse(
+                        $templateCache.get('moscow_to_izh_22.06_stored.json')
+                    )
+                );
+
+                spyOn(Date, 'now').andReturn(pseudo_now);
+
+                response = StorageLookup.fetchList({
+                    from: 200000,
+                    to: 2060150,
+                    date: '22.06.2014'
+                });
+
+                $httpBackend.flush();
+
+                expect(angular.isArray(response)).toBeTruthy();
+                expect(response.length).toEqual(expected_trains_count);
+                angular.forEach(response, function (train_row) {
+                    expect(train_row.time0).toBeGreaterThan($filter('date')(
+                        pseudo_now, RZD_TIME_FORMAT
+                    ));
+                });
+
+            });
+        }
+
         beforeEach(function () {
             module('rzd_client_config');
             module('fixtures');
@@ -108,69 +143,12 @@ describe('RZD open API client', function () {
             }
         );
 
-        it('should not return list of trains',
-            inject(function ($templateCache) {
-                var response;
-
-                $httpBackend.expectGET(
-                    'http://' + GlobalConfig.api_host +
-                    GlobalConfig.storage_prefix +
-                    'fetch/list?date=22.06.2014&from=200000&to=2060150'
-                ).respond(
-                    JSON.parse(
-                        $templateCache.get('moscow_to_izh_22.06_stored.json')
-                    )
-                );
-
-                spyOn(Date, 'now').andReturn(
-                    new Date(2014, 5, 22, 15, 0, 0)
-                );
-
-                response = StorageLookup.fetchList({
-                    from: 200000,
-                    to: 2060150,
-                    date: '22.06.2014'
-                });
-
-                $httpBackend.flush();
-
-                expect(angular.isArray(response)).toBeTruthy();
-                expect(response.length).toEqual(2);
-                expect(response[0].number).toEqual("026Г");
-                expect(response[1].number).toEqual("131Г");
-            })
+        it('should return list of trains',
+            testTrainListForJune22th(new Date(2014, 5, 22, 15, 0, 0), 2)
         );
 
-        it('should not return trains already departured',
-            inject(function ($templateCache) {
-                var response;
-
-                $httpBackend.expectGET(
-                    'http://' + GlobalConfig.api_host +
-                    GlobalConfig.storage_prefix +
-                    'fetch/list?date=22.06.2014&from=200000&to=2060150'
-                ).respond(
-                    JSON.parse(
-                        $templateCache.get('moscow_to_izh_22.06_stored.json')
-                    )
-                );
-
-                spyOn(Date, 'now').andReturn(
-                    new Date(2014, 5, 22, 19, 0, 0)
-                );
-
-                response = StorageLookup.fetchList({
-                    from: 200000,
-                    to: 2060150,
-                    date: '22.06.2014'
-                });
-
-                $httpBackend.flush();
-
-                expect(angular.isArray(response)).toBeTruthy();
-                expect(response.length).toEqual(1);
-                expect(response[0].number).toEqual("131Г");
-            })
+        it('should not return train already departured at 17:38',
+            testTrainListForJune22th(new Date(2014, 5, 22, 17, 40, 0), 1)
         );
     });
 });
