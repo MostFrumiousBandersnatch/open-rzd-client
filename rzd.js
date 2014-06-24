@@ -22,7 +22,7 @@
         'HH:mm'
     );
 
-    app.factory('stationsSuggester', ['$resource', 'GLOBAL_CONFIG',
+    app.factory('StationsSuggester', ['$resource', 'GLOBAL_CONFIG',
         function ($resource, GLOBAL_CONFIG) {
             return $resource([
                 "http://",
@@ -33,7 +33,7 @@
         }]
     );
 
-    app.factory('trackedStationsLookup', ['$resource', 'GLOBAL_CONFIG',
+    app.factory('TrackedStationsLookup', ['$resource', 'GLOBAL_CONFIG',
         function ($resource, GLOBAL_CONFIG) {
             return $resource(["http://",
                 GLOBAL_CONFIG.api_host,
@@ -146,7 +146,7 @@
         };
     });
 
-    app.service('trackingTask', [
+    app.service('TrackingTask', [
         '$window',
         'encodeDict',
         'GLOBAL_CONFIG',
@@ -182,7 +182,7 @@
                         ].join(''));
 
 
-                    this.ws.onmessage = function () {
+                    this.ws.onmessage = function (event) {
                         var msg = event.data,
                             parts = msg.split(' '),
                             task_key = parts.shift(),
@@ -408,8 +408,8 @@
                                 //that.removeWatcher(w_key);
                             });
 
-                            if (this.on_success) {
-                                this.on_success(train_num, train_data);
+                            if (this.onSuccess) {
+                                this.onSuccess(train_num, train_data);
                             }
                         });
                     } else if (this.isFailured()) {
