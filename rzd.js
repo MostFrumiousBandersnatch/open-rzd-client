@@ -258,7 +258,8 @@
                 this.success_time = (new Date()).toLocaleTimeString();
             };
 
-            Task = function (from, to, date, s_from, s_to) {
+
+            Task = function (from, to, date, s_from, s_to, error_proof) {
                 var key = [this.TYPE, from, to, date].join(','),
                     instance = Task.getByKey(key);
 
@@ -275,6 +276,8 @@
 
                 this.from = s_from;
                 this.to = s_to;
+
+                this.error_proof = error_proof || false;
 
                 this.watchers = {};
 
@@ -354,8 +357,15 @@
             };
 
             Task.prototype._addWatcher = function (w, connection) {
+                var args = ['watch', this.key, w.key];
+
+                if (this.error_proof) {
+                    args.push('ignore:NOT_FOUND');
+                }
+
                 connection = connection || getWSConnection();
-                connection.send(['watch', this.key, w.key].join(' '));
+
+                connection.send(args.join(' '));
             };
 
             Task.prototype.removeWatcher = function (w_key, hardly) {

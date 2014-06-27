@@ -1,6 +1,6 @@
 {
     "name": "open-rzd-client",
-    "version": "0.0.2",
+    "version": "0.1.0",
     "main": "rzd.js",
     "ignore": [
         "test/*",
