@@ -410,16 +410,21 @@
                         data = JSON.parse(msg);
 
                         angular.forEach(data, function (train_data, train_num) {
+                            var seat_types_found = [];
+
                             angular.forEach(train_data, function (v, w_key) {
+                                var watcher = that.watchers[w_key];
+
                                 console.log(w_key);
-                                that.watchers[w_key].claim_success();
+                                watcher.claim_success();
+                                seat_types_found.push(watcher.seat_type);
                                 //watchers being removed on server automatically
                                 //at a moment of success
                                 //that.removeWatcher(w_key);
                             });
 
                             if (this.onSuccess) {
-                                this.onSuccess(train_num, train_data);
+                                this.onSuccess(train_num, train_data, seat_types_found);
                             }
                         });
                     } else if (this.isFailured()) {
