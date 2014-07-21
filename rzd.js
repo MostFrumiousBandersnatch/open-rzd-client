@@ -417,7 +417,7 @@
 
                                 console.log(w_key);
                                 watcher.claim_success();
-                                seat_types_found.push(watcher.seat_type);
+                                seat_types_found.push(watcher.input.seat_type);
                                 //watchers being removed on server automatically
                                 //at a moment of success
                                 //that.removeWatcher(w_key);
