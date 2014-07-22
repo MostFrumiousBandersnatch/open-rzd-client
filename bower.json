@@ -8,7 +8,7 @@
     ],
     "dependencies": {
         "angular": "=1.2.18",
-        "angular-resource": "~1.2.0"
+        "angular-resource": "=1.2.18"
     },
     "devDependencies": {
         "jasmine": "~2.0",
