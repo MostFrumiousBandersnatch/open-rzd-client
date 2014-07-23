@@ -250,14 +250,44 @@
                 this.input.seat_pos = seat_pos || '';
 
                 this.key = encodeDict(this.input, true, true);
-                this.succeeded = false;
+                this.status = this.WAITING;
             };
 
-            Watcher.prototype.claim_success = function () {
-                this.succeeded = true;
-                this.success_time = (new Date()).toLocaleTimeString();
+            Watcher.prototype.WAITING = 0;
+            Watcher.prototype.SUCCEEDED = 1;
+            Watcher.prototype.ACCEPTED = 2;
+
+            Watcher.prototype.isWaiting = function () {
+                return this.status === this.WAITING;
             };
 
+            Watcher.prototype.isSucceeded = function () {
+                return this.status === this.SUCCEEDED;
+            };
+
+            Watcher.prototype.isAccepted = function () {
+                return this.status === this.ACCEPTED;
+            };
+
+            Watcher.prototype.claimSucceeded = function () {
+                if (this.isWaiting()) {
+                    this.status = this.SUCCEEDED;
+                    this.success_time = (new Date()).toLocaleTimeString();
+                }
+            };
+
+            Watcher.prototype.accept = function () {
+                if (this.isSucceeded()) {
+                    this.status = this.ACCEPTED;
+                }
+            };
+
+            Watcher.prototype.restart = function () {
+                if (this.isAccepted()) {
+                    this.status = this.WAITING;
+                    return true;
+                }
+            };
 
             Task = function (from, to, date, s_from, s_to, error_proof) {
                 var key = [this.TYPE, from, to, date].join(','),
@@ -320,7 +350,7 @@
                     console.log("Trying to recover " + this.key);
 
                     angular.forEach(this.watchers, function (watcher) {
-                        if (!watcher.succeeded) {
+                        if (!watcher.isSucceeded()) {
                             that._addWatcher(watcher, connection);
                         } else {
                             succeeded_cnt += 1;
@@ -368,9 +398,9 @@
                 connection.send(args.join(' '));
             };
 
-            Task.prototype.removeWatcher = function (w_key, hardly) {
+            Task.prototype.removeWatcher = function (w_key, hard) {
                 if (this.watchers[w_key] !== undefined) {
-                    if (hardly) {
+                    if (hard) {
                         delete this.watchers[w_key];
                     }
                     getWSConnection().send(
@@ -399,9 +429,12 @@
             };
 
             Task.prototype.inconsiderableMsgTmpl = /^(\+W|\-W|stopped)/;
+            //Task.prototype.statusMsgTmpl = /^(\.|\-|\!)\d/;
+            Task.prototype.depTrainsMsgTmpl = /^dep/;
 
             Task.prototype.processReport = function (msg) {
                 var that = this,
+                    trains_departured,
                     data;
 
                 if (!this.inconsiderableMsgTmpl.test(msg)) {
@@ -416,7 +449,7 @@
                                 var watcher = that.watchers[w_key];
 
                                 console.log(w_key);
-                                watcher.claim_success();
+                                watcher.claimSucceeded();
                                 seat_types_found.push(watcher.input.seat_type);
                                 //watchers being removed on server automatically
                                 //at a moment of success
@@ -429,6 +462,10 @@
                         });
                     } else if (this.isFailured()) {
                         this.result.errors = JSON.parse(msg);
+                    } else if (this.depTrainsMsgTmpl.test(msg)) {
+                        if (msg.length > 2 && this.onDeparture) {
+                            this.onDeparture(JSON.parse(msg.substr(4)));
+                        }
                     } else if (msg.length === 2) {
                         this.state.status = parseInt(msg[0], 10);
                         if (msg[1] === '-') {
