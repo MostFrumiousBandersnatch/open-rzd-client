@@ -115,8 +115,6 @@ describe('RZD open API client', function () {
                 StorageLookup = $injector.get('StorageLookup');
                 GlobalConfig = $injector.get('GLOBAL_CONFIG');
             });
-
-
         });
 
         it('should call the right URL and return an array',
@@ -150,5 +148,23 @@ describe('RZD open API client', function () {
         it('should not return train already departured at 17:38',
             testTrainListForJune22th(new Date(2014, 5, 22, 17, 40, 0), 1)
         );
+    });
+
+    describe('TrackingTask', function () {
+        var Task;
+
+        beforeEach(inject(
+            function (TrackingTask) {
+                Task = TrackingTask;
+            }
+        ));
+
+        it('should make task keys properly', function () {
+            expect(
+                Task.makeKey(200000, 200000, '01.01.2015')
+            ).toEqual(
+                'list,200000,200000,01.01.2015'
+            );
+        });
     });
 });

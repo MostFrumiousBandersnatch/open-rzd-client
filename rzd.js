@@ -290,7 +290,7 @@
             };
 
             Task = function (from, to, date, s_from, s_to, error_proof) {
-                var key = [this.TYPE, from, to, date].join(','),
+                var key = Task.makeKey(from, to, date),
                     instance = Task.getByKey(key);
 
                 if (instance) {
@@ -324,6 +324,10 @@
                 };
 
                 task_registry[key] = this;
+            };
+
+            Task.makeKey = function (from, to, date) {
+                return [this.prototype.TYPE, from, to, date].join(',');
             };
 
             Task.getByKey = function (key) {
