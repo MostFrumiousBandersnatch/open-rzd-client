@@ -457,19 +457,23 @@
                         angular.forEach(data, function (train_data, train_num) {
                             var watchers_succeeded = [];
 
-                            angular.forEach(train_data.watchers, function (w_key) {
-                                var watcher = that.watchers[w_key];
+                            angular.forEach(
+                                train_data.watchers,
+                                function (w_key) {
+                                    var watcher = that.watchers[w_key];
 
-                                console.log(w_key);
-                                watcher.claimSucceeded();
-                                watchers_succeeded.push(watcher);
-                                //watchers being removed on server automatically
-                                //at a moment of success
-                                //that.removeWatcher(watcher);
-                            });
+                                    console.log(w_key);
+                                    watcher.claimSucceeded();
+                                    watchers_succeeded.push(watcher);
+                                }
+                            );
 
                             if (that.onSuccess) {
-                                that.onSuccess(train_num, train_data, watchers_succeeded);
+                                that.onSuccess(
+                                    train_num,
+                                    train_data,
+                                    watchers_succeeded
+                                );
                             }
                         });
                     } else if (this.isFailured()) {
