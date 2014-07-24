@@ -405,10 +405,10 @@
 
             Task.prototype.removeWatcher = function (watcher) {
                 if (this.watchers[watcher.key] !== undefined) {
-                    delete this.watchers[w_key];
+                    delete this.watchers[watcher.key];
 
                     getWSConnection().send(
-                        ['unwatch', this.key, w_key].join(' ')
+                        ['unwatch', this.key, watcher.key].join(' ')
                     );
                 }
             };
