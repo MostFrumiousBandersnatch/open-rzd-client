@@ -279,6 +279,7 @@
             Watcher.prototype.accept = function () {
                 if (this.isSucceeded()) {
                     this.status = this.ACCEPTED;
+                    return true;
                 }
             };
 
@@ -402,14 +403,21 @@
                 connection.send(args.join(' '));
             };
 
-            Task.prototype.removeWatcher = function (w_key, hard) {
-                if (this.watchers[w_key] !== undefined) {
-                    if (hard) {
-                        delete this.watchers[w_key];
-                    }
+            Task.prototype.removeWatcher = function (watcher) {
+                if (this.watchers[watcher.key] !== undefined) {
+                    delete this.watchers[w_key];
+
                     getWSConnection().send(
                         ['unwatch', this.key, w_key].join(' ')
                     );
+                }
+            };
+
+            Task.prototype.restartWatcher = function (watcher) {
+                if (this.watchers[watcher.key] !== undefined) {
+                    if (watcher.restart()) {
+                        this._addWatcher(watcher);
+                    }
                 }
             };
 
@@ -447,21 +455,21 @@
                         data = JSON.parse(msg);
 
                         angular.forEach(data, function (train_data, train_num) {
-                            var seat_types_found = [];
+                            var watchers_succeeded = [];
 
                             angular.forEach(train_data.watchers, function (w_key) {
                                 var watcher = that.watchers[w_key];
 
                                 console.log(w_key);
                                 watcher.claimSucceeded();
-                                seat_types_found.push(watcher.input.seat_type);
+                                watchers_succeeded.push(watcher);
                                 //watchers being removed on server automatically
                                 //at a moment of success
-                                //that.removeWatcher(w_key);
+                                //that.removeWatcher(watcher);
                             });
 
                             if (that.onSuccess) {
-                                that.onSuccess(train_num, train_data, seat_types_found);
+                                that.onSuccess(train_num, train_data, watchers_succeeded);
                             }
                         });
                     } else if (this.isFailured()) {
