@@ -251,6 +251,7 @@
 
                 this.key = encodeDict(this.input, true, true);
                 this.status = this.WAITING;
+                this.cars_found = null;
             };
 
             Watcher.prototype.WAITING = 0;
@@ -269,10 +270,17 @@
                 return this.status === this.ACCEPTED;
             };
 
-            Watcher.prototype.claimSucceeded = function () {
-                if (this.isWaiting()) {
+            Watcher.prototype.claimSucceeded = function (cars_found) {
+                if (!this.ACCEPTED()) {
                     this.status = this.SUCCEEDED;
-                    this.success_time = (new Date()).toLocaleTimeString();
+                    this.cars_found = cars_found;
+                }
+            };
+
+            Watcher.prototype.claimFailured = function (cars_found) {
+                if (!this.ACCEPTED()) {
+                    this.status = this.WAITING;
+                    this.cars_found = null;
                 }
             };
 
@@ -316,7 +324,6 @@
                     attempts_done: 0,
                     errors_happened: 0,
                     status: this.IN_PROGRESS,
-                    waiting_for_result: false
                 };
 
                 this.result = {
@@ -441,8 +448,10 @@
             };
 
             Task.prototype.inconsiderableMsgTmpl = /^(\+W|\-W|stopped)/;
-            //Task.prototype.statusMsgTmpl = /^(\.|\-|\!)\d/;
+            //Task.prototype.statusMsgTmpl = /^(\.|\-)\d/;
             Task.prototype.depTrainsMsgTmpl = /^dep/;
+            Task.prototype.foundTrainsMsgTmpl = /^found/;
+            Task.prototype.lostTrainsMsgTmpl = /^lost/;
 
             Task.prototype.processReport = function (msg) {
                 var that = this,
@@ -450,44 +459,36 @@
                     data;
 
                 if (!this.inconsiderableMsgTmpl.test(msg)) {
-                    if (this.state.waiting_for_result) {
-                        this.state.waiting_for_result = false;
-                        data = JSON.parse(msg);
+                    if (this.foundTrainsMsgTmpl.test(msg) {
+                        data = JSON.parse(msg.substr(6));
 
-                        angular.forEach(data, function (train_data, train_num) {
-                            var watchers_succeeded = [];
+                        angular.forEach(data, function (w_key, cars_found) {
+                            var watcher = that.watchers[w_key];
 
-                            angular.forEach(
-                                train_data.watchers,
-                                function (w_key) {
-                                    var watcher = that.watchers[w_key];
-
-                                    console.log(w_key);
-                                    watcher.claimSucceeded();
-                                    watchers_succeeded.push(watcher);
-                                }
-                            );
-
-                            if (that.onSuccess) {
-                                that.onSuccess(
-                                    train_num,
-                                    train_data,
-                                    watchers_succeeded
-                                );
+                            if (watcher) {
+                                watcher.claimSucceeded(cars_found);
                             }
                         });
-                    } else if (this.isFailured()) {
-                        this.result.errors = JSON.parse(msg);
+                    } else if (this.lostTrainsMsgTmpl.test(msg)) {
+                        data = JSON.parse(msg.substr(5));
+
+                        angular.forEach(data, function (w_key) {
+                            var watcher = that.watchers[w_key];
+
+                            if (watcher) {
+                                watcher.claimFailured();
+                            }
+                        });
                     } else if (this.depTrainsMsgTmpl.test(msg)) {
-                        if (msg.length > 2 && this.onDeparture) {
+                        if (this.onDeparture) {
                             this.onDeparture(JSON.parse(msg.substr(4)));
                         }
-                    } else if (msg.length === 2) {
+                    } else if (this.isFailured()) {
+                        this.result.errors = JSON.parse(msg);
+                    }  else if (msg.length === 2) {
                         this.state.status = parseInt(msg[0], 10);
                         if (msg[1] === '-') {
                             this.state.errors_happened += 1;
-                        } else if (msg[1] === '!') {
-                            this.state.waiting_for_result = true;
                         } else {
                             this.state.errors_happened = 0;
                         }
