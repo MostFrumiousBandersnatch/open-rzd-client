@@ -271,16 +271,22 @@
             };
 
             Watcher.prototype.claimSucceeded = function (cars_found) {
-                if (!this.ACCEPTED()) {
+                var alreadySucceeded;
+
+                if (!this.isAccepted()) {
+                    alreadySucceeded = this.isSucceeded();
                     this.status = this.SUCCEEDED;
                     this.cars_found = cars_found;
+
+                    return !alreadySucceeded;
                 }
             };
 
             Watcher.prototype.claimFailured = function (cars_found) {
-                if (!this.ACCEPTED()) {
+                if (this.isSucceeded()) {
                     this.status = this.WAITING;
                     this.cars_found = null;
+                    return true;
                 }
             };
 
@@ -410,11 +416,15 @@
                 connection.send(args.join(' '));
             };
 
+            Task.prototype.send = function (msg) {
+                getWSConnection().send(msg);
+            };
+
             Task.prototype.removeWatcher = function (watcher) {
                 if (this.watchers[watcher.key] !== undefined) {
                     delete this.watchers[watcher.key];
 
-                    getWSConnection().send(
+                    this.send(
                         ['unwatch', this.key, watcher.key].join(' ')
                     );
                 }
@@ -447,58 +457,105 @@
                 return this;
             };
 
-            Task.prototype.inconsiderableMsgTmpl = /^(\+W|\-W|stopped)/;
-            //Task.prototype.statusMsgTmpl = /^(\.|\-)\d/;
-            Task.prototype.depTrainsMsgTmpl = /^dep/;
-            Task.prototype.foundTrainsMsgTmpl = /^found/;
-            Task.prototype.lostTrainsMsgTmpl = /^lost/;
+            Task.prototype.GRAMMAR = [
+                [
+                    /^(\d)(\.|\-)(?:\s([\w{}\[\]":,\s]+))?$/,
+                    function (status, prefix, error_json) {
+                        this.state.attempts_done += 1;
+                        this.state.status = parseInt(status, 10);
 
-            Task.prototype.processReport = function (msg) {
-                var that = this,
-                    trains_departured,
-                    data;
-
-                if (!this.inconsiderableMsgTmpl.test(msg)) {
-                    if (this.foundTrainsMsgTmpl.test(msg) {
-                        data = JSON.parse(msg.substr(6));
-
-                        angular.forEach(data, function (w_key, cars_found) {
-                            var watcher = that.watchers[w_key];
-
-                            if (watcher) {
-                                watcher.claimSucceeded(cars_found);
-                            }
-                        });
-                    } else if (this.lostTrainsMsgTmpl.test(msg)) {
-                        data = JSON.parse(msg.substr(5));
-
-                        angular.forEach(data, function (w_key) {
-                            var watcher = that.watchers[w_key];
-
-                            if (watcher) {
-                                watcher.claimFailured();
-                            }
-                        });
-                    } else if (this.depTrainsMsgTmpl.test(msg)) {
-                        if (this.onDeparture) {
-                            this.onDeparture(JSON.parse(msg.substr(4)));
-                        }
-                    } else if (this.isFailured()) {
-                        this.result.errors = JSON.parse(msg);
-                    }  else if (msg.length === 2) {
-                        this.state.status = parseInt(msg[0], 10);
-                        if (msg[1] === '-') {
+                        if (prefix === '-') {
                             this.state.errors_happened += 1;
                         } else {
                             this.state.errors_happened = 0;
                         }
-                        this.state.attempts_done += 1;
+
+                        if (this.state.status === this.FAILURE) {
+                            this.result.errors = JSON.parse(error_json);
+                        }
+                    }
+                ],
+                [
+                    /^\+W|\-W|stopped|has been scheduled/,
+                    angular.noop
+                ],
+                [
+                    /^found (.+)$/,
+                    function (json_str) {
+                        var data = JSON.parse(json_str),
+                            watchers_got_succeeded = [];
+
+                        angular.forEach(
+                            data,
+                            function (task, cars_found, w_key) {
+                                var watcher = task.watchers[w_key];
+
+                                if (
+                                    watcher && watcher.claimSucceeded(
+                                        cars_found
+                                    )
+                                ) {
+                                    watchers_got_succeeded.push(watcher);
+                                }
+                            }.bind(null, this)
+                        );
+
+                        if (
+                            watchers_got_succeeded.length > 0 && this.onSuccess
+                        ) {
+                            this.onSuccess(watchers_got_succeeded);
+                        }
+                    }
+                ],
+                [
+                    /^lost (.+)/,
+                    function (json_str) {
+                        var data = JSON.parse(json_str);
+
+                        angular.forEach(data, function (task, w_key) {
+                            var watcher = task.watchers[w_key];
+
+                            if (watcher) {
+                                watcher.claimFailured();
+                            }
+                        }.bind(null, this));
+                    }
+                ],
+                [
+                    /^dep ((.+))/,
+                    function (json_str) {
+                        if (this.onDeparture) {
+                            this.onDeparture(JSON.parse(json_str));
+                        }
+                    }
+                ]
+            ];
+
+            Task.prototype.processReport = function (msg) {
+                var re, callback, i, l, res, e;
+
+                for (i = 0, l = this.GRAMMAR.length; i < l; i += 1) {
+                    re = this.GRAMMAR[i][0];
+                    callback = this.GRAMMAR[i][1];
+                    res = re.exec(msg);
+
+                    if (res !== null) {
+                        try {
+                            callback.call(this, res.splice(1));
+                        } catch (e) {
+                            console.log(e);
+                        }
+
+                        if (e === undefined) {
+                            if (this.onUpdate) {
+                                this.onUpdate();
+                            }
+                        }
+
+                        return;
                     }
                 }
-
-                if (this.onUpdate) {
-                    this.onUpdate();
-                }
+                console.log('not parsed');
             };
 
             return Task;
