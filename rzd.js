@@ -486,7 +486,7 @@
                             watchers_got_succeeded = [];
 
                         angular.forEach(
-                            data,
+                            data.watchers,
                             function (task, cars_found, w_key) {
                                 var watcher = task.watchers[w_key];
 
@@ -503,7 +503,7 @@
                         if (
                             watchers_got_succeeded.length > 0 && this.onSuccess
                         ) {
-                            this.onSuccess(watchers_got_succeeded);
+                            this.onSuccess(watchers_got_succeeded, data.dep_times);
                         }
                     }
                 ],
@@ -540,18 +540,11 @@
                     res = re.exec(msg);
 
                     if (res !== null) {
-                        try {
-                            callback.call(this, res.splice(1));
-                        } catch (e) {
-                            console.log(e);
-                        }
+                        callback.call(this, res.splice(1));
 
-                        if (e === undefined) {
-                            if (this.onUpdate) {
-                                this.onUpdate();
-                            }
+                        if (this.onUpdate) {
+                            this.onUpdate();
                         }
-
                         return;
                     }
                 }
