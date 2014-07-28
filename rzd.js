@@ -520,14 +520,6 @@
                             }
                         }.bind(null, this));
                     }
-                ],
-                [
-                    /^dep ((.+))/,
-                    function (json_str) {
-                        if (this.onDeparture) {
-                            this.onDeparture(JSON.parse(json_str));
-                        }
-                    }
                 ]
             ];
 
