@@ -508,7 +508,7 @@
                     }
                 ],
                 [
-                    /^lost (.+)/,
+                    /^lost (.+)$/,
                     function (json_str) {
                         var data = JSON.parse(json_str);
 
