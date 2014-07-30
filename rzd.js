@@ -271,14 +271,12 @@
             };
 
             Watcher.prototype.claimSucceeded = function (cars_found) {
-                var alreadySucceeded;
-
                 if (!this.isAccepted()) {
-                    alreadySucceeded = this.isSucceeded();
-                    this.status = this.SUCCEEDED;
                     this.cars_found = cars_found;
-
-                    return !alreadySucceeded;
+                    if (!this.isSucceeded()) {
+                        this.status = this.SUCCEEDED;
+                        return true;
+                    }
                 }
             };
 
@@ -421,7 +419,8 @@
             };
 
             Task.prototype.removeWatcher = function (watcher) {
-                if (this.watchers[watcher.key] !== undefined) {
+                if (this.watchers[watcher.key] !== undefined &&
+                    !this.watchers[watcher.key].isSucceeded()) {
                     delete this.watchers[watcher.key];
 
                     this.send(
