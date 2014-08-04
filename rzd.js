@@ -280,7 +280,7 @@
                 }
             };
 
-            Watcher.prototype.claimFailured = function (cars_found) {
+            Watcher.prototype.claimFailed = function (cars_found) {
                 if (this.isSucceeded()) {
                     this.status = this.WAITING;
                     this.cars_found = null;
@@ -437,7 +437,7 @@
                 }
             };
 
-            Task.prototype.isFailured = function () {
+            Task.prototype.isFailed = function () {
                 return this.state.status === this.FAILURE;
             };
 
@@ -458,7 +458,7 @@
 
             Task.prototype.GRAMMAR = [
                 [
-                    /^(\d)(\.|\-)(?:\s([\w{}\[\]":,\s]+))?$/,
+                    /^(\d)(\.|\-)(?:\s(.+))?$/,
                     function (status, prefix, error_json) {
                         this.state.attempts_done += 1;
                         this.state.status = parseInt(status, 10);
@@ -469,8 +469,8 @@
                             this.state.errors_happened = 0;
                         }
 
-                        if (this.state.status === this.FAILURE) {
-                            this.result.errors = JSON.parse(error_json);
+                        if (this.isFailed()) {
+                            this.result.errors = angular.fromJson(error_json);
                         }
                     }
                 ],
@@ -481,7 +481,7 @@
                 [
                     /^found (.+)$/,
                     function (json_str) {
-                        var data = JSON.parse(json_str),
+                        var data = angular.fromJson(json_str),
                             watchers_got_succeeded = [];
 
                         angular.forEach(
@@ -509,15 +509,21 @@
                 [
                     /^lost (.+)$/,
                     function (json_str) {
-                        var data = JSON.parse(json_str);
+                        var data = angular.fromJson(json_str),
+                            watchers = [];
 
                         angular.forEach(data, function (task, w_key) {
                             var watcher = task.watchers[w_key];
 
                             if (watcher) {
-                                watcher.claimFailured();
+                                watcher.claimFailed();
+                                watchers.push(watcher);
                             }
                         }.bind(null, this));
+
+                        if (this.onTrainsLost) {
+                            this.onTrainsLost(watchers);
+                        }
                     }
                 ]
             ];
@@ -531,7 +537,7 @@
                     res = re.exec(msg);
 
                     if (res !== null) {
-                        callback.call(this, res.splice(1));
+                        callback.apply(this, res.splice(1));
 
                         if (this.onUpdate) {
                             this.onUpdate();
