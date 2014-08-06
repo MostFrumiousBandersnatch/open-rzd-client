@@ -280,7 +280,7 @@
                 }
             };
 
-            Watcher.prototype.claimFailed = function (cars_found) {
+            Watcher.prototype.claimFailed = function () {
                 if (this.isSucceeded()) {
                     this.status = this.WAITING;
                     this.cars_found = null;
@@ -423,9 +423,15 @@
                     !this.watchers[watcher.key].isSucceeded()) {
                     delete this.watchers[watcher.key];
 
-                    this.send(
-                        ['unwatch', this.key, watcher.key].join(' ')
-                    );
+                    if (this.isActive() && watcher.isAccepted()) {
+                        this.send(
+                            ['unwatch', this.key, watcher.key].join(' ')
+                        );
+                    }
+
+                    if(Object.keys(this.watchers).length === 0) {
+                        this.stop();
+                    }
                 }
             };
 
