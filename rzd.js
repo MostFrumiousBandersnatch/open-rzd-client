@@ -354,6 +354,7 @@
                 IN_PROGRESS: 0,
                 FAILURE: 2,
                 STOPPED: 4,
+                FATAL_FAILURE: 6,
                 TRACKING_ERRORS_LIMIT: 5,
                 TYPE: 'list'
             };
@@ -444,6 +445,11 @@
             };
 
             Task.prototype.isFailed = function () {
+                return (this.state.status === this.FAILURE) ||
+                        (this.state.status === this.FATAL_FAILURE);
+            };
+
+            Task.prototype.isRecoverable = function () {
                 return this.state.status === this.FAILURE;
             };
 
