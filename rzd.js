@@ -99,7 +99,7 @@
                             result = [];
 
                         if (rows.length > 0) {
-                            for_date = rows[0].key[2];
+                            for_date = rows[0].key[3];
                             now = Date.now();
                             current_date = $filter('date')(
                                 now, RZD_DATE_FORMAT
