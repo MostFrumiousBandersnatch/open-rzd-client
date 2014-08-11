@@ -380,6 +380,11 @@
                 }
             };
 
+            Task.prototype.restart = function () {
+                this.state.status = this.IN_PROGRESS;
+                this.recover();
+            }
+
             Task.prototype.addWatcher = function (
                 train_num,
                 seat_type,
