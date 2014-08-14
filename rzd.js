@@ -236,18 +236,20 @@
 
             Watcher = function (
                 train_num,
+                dep_time,
                 seat_type,
                 car_num,
                 seat_num,
                 seat_pos
             ) {
-                this.input = {};
-
-                this.input.train_num = train_num;
-                this.input.seat_type = seat_type;
-                this.input.car_num = car_num || '';
-                this.input.seat_num = seat_num || '';
-                this.input.seat_pos = seat_pos || '';
+                this.input = {
+                    train_num: train_num,
+                    dep_time: dep_time,
+                    seat_type: seat_type,
+                    car_num: car_num || '',
+                    seat_num: seat_num || '',
+                    seat_pos: seat_pos || ''
+                };
 
                 this.key = encodeDict(this.input, true, true);
                 this.status = this.WAITING;
@@ -327,7 +329,7 @@
                 this.state = {
                     attempts_done: 0,
                     errors_happened: 0,
-                    status: this.IN_PROGRESS,
+                    status: this.IN_PROGRESS
                 };
 
                 this.result = {
@@ -368,7 +370,7 @@
 
                     angular.forEach(this.watchers, function (watcher) {
                         if (!watcher.isSucceeded()) {
-                            that._addWatcher(watcher, connection);
+                            that.pushWatcher(watcher, connection);
                         } else {
                             succeeded_cnt += 1;
                         }
@@ -383,10 +385,11 @@
             Task.prototype.restart = function () {
                 this.state.status = this.IN_PROGRESS;
                 this.recover();
-            }
+            };
 
             Task.prototype.addWatcher = function (
                 train_num,
+                dep_time,
                 seat_type,
                 car_num,
                 seat_num,
@@ -394,6 +397,7 @@
             ) {
                 var w = new Watcher(
                     train_num,
+                    dep_time,
                     seat_type,
                     car_num,
                     seat_num,
@@ -402,13 +406,13 @@
 
                 if (this.watchers[w.key] === undefined) {
                     this.watchers[w.key] = w;
-                    this._addWatcher(w);
+                    this.pushWatcher(w);
                 }
 
                 return this.watchers[w.key];
             };
 
-            Task.prototype._addWatcher = function (w, connection) {
+            Task.prototype.pushWatcher = function (w, connection) {
                 var args = ['watch', this.key, w.key];
 
                 if (this.error_proof) {
@@ -435,7 +439,7 @@
                         );
                     }
 
-                    if(Object.keys(this.watchers).length === 0) {
+                    if (Object.keys(this.watchers).length === 0) {
                         this.stop();
                     }
                 }
@@ -444,7 +448,7 @@
             Task.prototype.restartWatcher = function (watcher) {
                 if (this.watchers[watcher.key] !== undefined) {
                     if (watcher.restart()) {
-                        this._addWatcher(watcher);
+                        this.pushWatcher(watcher);
                     }
                 }
             };
@@ -498,11 +502,11 @@
                 [
                     /^found (.+)$/,
                     function (json_str) {
-                        var data = angular.fromJson(json_str),
+                        var watchers = angular.fromJson(json_str),
                             watchers_got_succeeded = [];
 
                         angular.forEach(
-                            data.watchers,
+                            watchers,
                             function (task, cars_found, w_key) {
                                 var watcher = task.watchers[w_key];
 
@@ -519,7 +523,9 @@
                         if (
                             watchers_got_succeeded.length > 0 && this.onSuccess
                         ) {
-                            this.onSuccess(watchers_got_succeeded, data.dep_times);
+                            this.onSuccess(
+                                watchers_got_succeeded
+                            );
                         }
                     }
                 ],
@@ -546,7 +552,7 @@
             ];
 
             Task.prototype.processReport = function (msg) {
-                var re, callback, i, l, res, e;
+                var re, callback, i, l, res;
 
                 for (i = 0, l = this.GRAMMAR.length; i < l; i += 1) {
                     re = this.GRAMMAR[i][0];
