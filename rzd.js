@@ -492,6 +492,7 @@
 
                         if (this.isFailed()) {
                             this.result.errors = angular.fromJson(error_json);
+                            this.onFailure && this.onFailure();
                         }
                     }
                 ],
