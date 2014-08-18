@@ -150,6 +150,78 @@ describe('RZD open API client', function () {
         );
     });
 
+    describe('Watcher', function () {
+        var Watcher,
+            cars_found_sample = {
+                "freeSeats": 170,
+                "itype": 4,
+                "pt": 911,
+                "servCls": "2\u0422",
+                "tariff": 3045,
+                "type": "\u041a\u0443\u043f\u0435",
+                "typeLoc": "\u041a\u0443\u043f\u0435"
+            };
+
+        beforeEach(inject(function ($injector) {
+            Watcher = $injector.get('Watcher');
+        }));
+
+        it('should make watcher keys properly', function () {
+            var w = new Watcher('258А', '13:45', 'Купе');
+
+            expect(w.key).toEqual('train_num=258А&dep_time=13:45&seat_type=Купе')
+        });
+
+        it('watcher`s lifecycle', function () {
+            // initial WAITING
+            var w = new Watcher('258А', '13:45', 'Купе'),
+                check_waiting_watcher = function (w) {
+                    expect(w.isWaiting()).toBeTruthy();
+                    expect(w.isSucceeded()).toBeFalsy();
+                    expect(w.isAccepted()).toBeFalsy();
+                    expect(w.cars_found).toEqual(null);
+
+                    expect(w.claimFailed()).toBeFalsy();
+                    expect(w.accept()).toBeFalsy();
+                },
+                check_succeeded_watcher = function (w) {
+                    expect(w.isWaiting()).toBeFalsy();
+                    expect(w.isSucceeded()).toBeTruthy();
+                    expect(w.isAccepted()).toBeFalsy();
+                    expect(w.cars_found).toEqual(cars_found_sample);
+
+                    expect(w.claimSucceeded(cars_found_sample)).toBeFalsy();
+                };
+
+            check_waiting_watcher(w);
+
+            // WAITING --> SUCCEEDED
+            expect(w.claimSucceeded(cars_found_sample)).toBeTruthy();
+            check_succeeded_watcher(w);
+
+            // SUCCEEDED --> WAITING
+            expect(w.claimFailed()).toBeTruthy();
+            check_waiting_watcher(w);
+
+            // WAITING --> SUCCEEDED again
+            w.claimSucceeded(cars_found_sample)
+            check_succeeded_watcher(w);
+
+            // SUCCEEDED --> ACCEPTED
+            expect(w.accept()).toBeTruthy();
+
+            expect(w.isWaiting()).toBeFalsy();
+            expect(w.isSucceeded()).toBeFalsy();
+            expect(w.isAccepted()).toBeTruthy();
+
+            // ACCEPTED --> WAITING
+            expect(w.claimFailed()).toBeFalsy();
+            expect(w.claimSucceeded(cars_found_sample)).toBeFalsy();
+            expect(w.restart()).toBeTruthy();
+            check_waiting_watcher(w);
+        })
+    });
+
     describe('TrackingTask', function () {
         var Task;
 

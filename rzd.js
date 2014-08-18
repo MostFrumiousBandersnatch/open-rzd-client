@@ -146,15 +146,91 @@
         };
     });
 
+    app.service('Watcher', ['encodeDict',
+        function (encodeDict) {
+            var Watcher = function (
+                train_num,
+                dep_time,
+                seat_type,
+                car_num,
+                seat_num,
+                seat_pos
+            ) {
+                this.input = {
+                    train_num: train_num,
+                    dep_time: dep_time,
+                    seat_type: seat_type,
+                    car_num: car_num || '',
+                    seat_num: seat_num || '',
+                    seat_pos: seat_pos || ''
+                };
+
+                this.key = encodeDict(this.input, true, true);
+                this.status = this.WAITING;
+                this.cars_found = null;
+            };
+
+            Watcher.prototype.WAITING = 0;
+            Watcher.prototype.SUCCEEDED = 1;
+            Watcher.prototype.ACCEPTED = 2;
+
+            Watcher.prototype.isWaiting = function () {
+                return this.status === this.WAITING;
+            };
+
+            Watcher.prototype.isSucceeded = function () {
+                return this.status === this.SUCCEEDED;
+            };
+
+            Watcher.prototype.isAccepted = function () {
+                return this.status === this.ACCEPTED;
+            };
+
+            Watcher.prototype.claimSucceeded = function (cars_found) {
+                if (!this.isAccepted()) {
+                    this.cars_found = cars_found;
+                    if (!this.isSucceeded()) {
+                        this.status = this.SUCCEEDED;
+                        return true;
+                    }
+                }
+            };
+
+            Watcher.prototype.claimFailed = function () {
+                if (this.isSucceeded()) {
+                    this.status = this.WAITING;
+                    this.cars_found = null;
+                    return true;
+                }
+            };
+
+            Watcher.prototype.accept = function () {
+                if (this.isSucceeded()) {
+                    this.status = this.ACCEPTED;
+                    return true;
+                }
+            };
+
+            Watcher.prototype.restart = function (force) {
+                if (this.isAccepted() || force) {
+                    this.status = this.WAITING;
+                    this.cars_found = null;
+                    return true;
+                }
+            };
+
+            return Watcher;
+        }]
+    );
+
     app.service('TrackingTask', [
         '$window',
-        'encodeDict',
         'GLOBAL_CONFIG',
+        'Watcher',
 
-        function ($window, encodeDict, GLOBAL_CONFIG) {
+        function ($window, encodeDict, GLOBAL_CONFIG, Watcher) {
             var task_registry = {},
                 getWSConnection,
-                Watcher,
                 Task;
 
             getWSConnection = (function () {
@@ -233,77 +309,6 @@
                     return connection;
                 };
             }());
-
-            Watcher = function (
-                train_num,
-                dep_time,
-                seat_type,
-                car_num,
-                seat_num,
-                seat_pos
-            ) {
-                this.input = {
-                    train_num: train_num,
-                    dep_time: dep_time,
-                    seat_type: seat_type,
-                    car_num: car_num || '',
-                    seat_num: seat_num || '',
-                    seat_pos: seat_pos || ''
-                };
-
-                this.key = encodeDict(this.input, true, true);
-                this.status = this.WAITING;
-                this.cars_found = null;
-            };
-
-            Watcher.prototype.WAITING = 0;
-            Watcher.prototype.SUCCEEDED = 1;
-            Watcher.prototype.ACCEPTED = 2;
-
-            Watcher.prototype.isWaiting = function () {
-                return this.status === this.WAITING;
-            };
-
-            Watcher.prototype.isSucceeded = function () {
-                return this.status === this.SUCCEEDED;
-            };
-
-            Watcher.prototype.isAccepted = function () {
-                return this.status === this.ACCEPTED;
-            };
-
-            Watcher.prototype.claimSucceeded = function (cars_found) {
-                if (!this.isAccepted()) {
-                    this.cars_found = cars_found;
-                    if (!this.isSucceeded()) {
-                        this.status = this.SUCCEEDED;
-                        return true;
-                    }
-                }
-            };
-
-            Watcher.prototype.claimFailed = function () {
-                if (this.isSucceeded()) {
-                    this.status = this.WAITING;
-                    this.cars_found = null;
-                    return true;
-                }
-            };
-
-            Watcher.prototype.accept = function () {
-                if (this.isSucceeded()) {
-                    this.status = this.ACCEPTED;
-                    return true;
-                }
-            };
-
-            Watcher.prototype.restart = function (force) {
-                if (this.isAccepted() || force) {
-                    this.status = this.WAITING;
-                    this.cars_found = null;
-                    return true;
-                }
-            };
 
             Task = function (from, to, date, s_from, s_to, error_proof) {
                 var key = Task.makeKey(from, to, date),
