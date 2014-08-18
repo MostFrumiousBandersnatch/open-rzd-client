@@ -228,7 +228,7 @@
         'GLOBAL_CONFIG',
         'Watcher',
 
-        function ($window, encodeDict, GLOBAL_CONFIG, Watcher) {
+        function ($window, GLOBAL_CONFIG, Watcher) {
             var task_registry = {},
                 getWSConnection,
                 Task;
