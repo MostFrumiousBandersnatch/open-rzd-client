@@ -297,9 +297,10 @@
                 }
             };
 
-            Watcher.prototype.restart = function () {
-                if (this.isAccepted()) {
+            Watcher.prototype.restart = function (force) {
+                if (this.isAccepted() || force) {
                     this.status = this.WAITING;
+                    this.cars_found = null;
                     return true;
                 }
             };
@@ -384,8 +385,23 @@
 
             Task.prototype.restart = function () {
                 this.state.status = this.IN_PROGRESS;
+                angular.forEach(
+                    this.watchers,
+                    function (watcher) {
+                        watcher.restart(true);
+                    }
+                );
                 this.recover();
             };
+
+            Task.prototype.restartWatcher = function (watcher) {
+                if (this.watchers[watcher.key] !== undefined) {
+                    if (watcher.restart(this.isFailed())) {
+                        this.pushWatcher(watcher);
+                    }
+                }
+            };
+
 
             Task.prototype.addWatcher = function (
                 train_num,
@@ -441,14 +457,6 @@
 
                     if (Object.keys(this.watchers).length === 0) {
                         this.stop();
-                    }
-                }
-            };
-
-            Task.prototype.restartWatcher = function (watcher) {
-                if (this.watchers[watcher.key] !== undefined) {
-                    if (watcher.restart()) {
-                        this.pushWatcher(watcher);
                     }
                 }
             };
