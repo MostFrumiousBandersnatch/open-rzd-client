@@ -13,6 +13,11 @@
     );
 
     app.value(
+        'ANY_SEAT',
+        'any_seat'
+    );
+
+    app.value(
         'RZD_DATE_FORMAT',
         'dd.MM.yyyy'
     );
