@@ -232,8 +232,9 @@
         '$window',
         'GLOBAL_CONFIG',
         'Watcher',
+        'ANY_SEAT',
 
-        function ($window, GLOBAL_CONFIG, Watcher) {
+        function ($window, GLOBAL_CONFIG, Watcher, ANY_SEAT) {
             var task_registry = {},
                 getWSConnection,
                 Task;
@@ -315,7 +316,15 @@
                 };
             }());
 
-            Task = function (from, to, date, s_from, s_to, error_proof) {
+            Task = function (
+                from,
+                to,
+                date,
+                s_from,
+                s_to,
+                error_proof,
+                limited
+            ) {
                 var key = Task.makeKey(from, to, date),
                     instance = Task.getByKey(key);
 
@@ -336,6 +345,7 @@
                 this.error_proof = error_proof || false;
 
                 this.watchers = {};
+                this.limited = Boolean(limited);
 
                 this.state = {
                     attempts_done: 0,
@@ -421,7 +431,13 @@
                 seat_num,
                 seat_pos
             ) {
-                var w = new Watcher(
+                var w;
+
+                if (this.limited  && seat_type !== ANY_SEAT) {
+                    throw('Inapproperiate watcher');
+                }
+
+                w = new Watcher(
                     train_num,
                     dep_time,
                     seat_type,
