@@ -151,8 +151,8 @@
         };
     });
 
-    app.service('Watcher', ['encodeDict',
-        function (encodeDict) {
+    app.service('Watcher', ['encodeDict', 'ANY_SEAT',
+        function (encodeDict, ANY_SEAT) {
             var Watcher = function (
                 train_num,
                 dep_time,
@@ -173,6 +173,10 @@
                 this.key = encodeDict(this.input, true, true);
                 this.status = this.WAITING;
                 this.cars_found = null;
+            };
+
+            Watcher.prototype.isGreedy = function () {
+                return this.input.seat_type === ANY_SEAT;
             };
 
             Watcher.prototype.WAITING = 0;
@@ -221,6 +225,16 @@
                     this.status = this.WAITING;
                     this.cars_found = null;
                     return true;
+                }
+            };
+
+            Watcher.prototype.iterateFoundCars = function (callback) {
+                if (this.cars_found) {
+                    if (!this.isGreedy()) {
+                        callback(this.cars_found);
+                    } else {
+                        angular.forEach(this.cars_found, callback);
+                    }
                 }
             };
 
