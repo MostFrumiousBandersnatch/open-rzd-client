@@ -525,6 +525,20 @@
                 return this;
             };
 
+            Task.prototype.suspendToEmail = function (email) {
+                if (this.isActive()) {
+                    getWSConnection().send([
+                        'suspend',
+                        this.key,
+                        'to_email',
+                        email
+                    ].join(' '));
+                    this.state.status = this.STOPPED;
+                    delete task_registry[this.key];
+                    return this;
+                }
+            };
+
             Task.prototype.GRAMMAR = [
                 [
                     /^(\d)(\.|\-)(?:\s(.+))?$/,
