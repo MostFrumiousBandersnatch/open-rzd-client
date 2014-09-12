@@ -392,7 +392,6 @@
                 FAILURE: 2,
                 STOPPED: 4,
                 FATAL_FAILURE: 6,
-                SUSPENDED: 8,
                 TRACKING_ERRORS_LIMIT: 5,
                 TYPE: 'list'
             };
@@ -519,10 +518,6 @@
                 return this.state.status === this.IN_PROGRESS;
             };
 
-            Task.prototype.isSuspended = function () {
-                return this.state.status === this.SUSPENDED;
-            };
-
             Task.prototype.stop = function () {
                 this.state.status = this.STOPPED;
                 getWSConnection().send(['remove', this.key].join(' '));
@@ -530,16 +525,15 @@
                 return this;
             };
 
-            Task.prototype.suspendToEmail = function (email) {
+            Task.prototype.setFallbackEmail = function (email) {
                 if (this.isActive()) {
+                    this.fallback_email = email;
+
                     getWSConnection().send([
-                        'suspend',
+                        'set_fallbak_email_for',
                         this.key,
-                        'to_email',
-                        email
+                        this.fallback_email
                     ].join(' '));
-                    this.state.status = this.SUSPENDED;
-                    delete task_registry[this.key];
                     return this;
                 }
             };
