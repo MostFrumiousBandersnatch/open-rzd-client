@@ -250,10 +250,11 @@
 
         function ($window, GLOBAL_CONFIG, Watcher, ANY_SEAT) {
             var task_registry = {},
+                forked_task_registry = {},
                 getWSConnection,
                 Task;
 
-            getWSConnection = (function () {
+            getWSConnection = (function ($window) {
                 var connection;
 
                 function WSConstructor() {
@@ -328,7 +329,7 @@
 
                     return connection;
                 };
-            }());
+            }($window));
 
             Task = function (
                 from,
@@ -380,7 +381,7 @@
             };
 
             Task.getByKey = function (key) {
-                return task_registry[key];
+                return task_registry[key] || forked_task_registry[key];
             };
 
             Task.getAll = function (callback) {
@@ -609,6 +610,12 @@
                         if (this.onTrainsLost) {
                             this.onTrainsLost(watchers);
                         }
+                    }
+                ],
+                [
+                    /^fork (.+)$/,
+                    function (forked_task_key) {
+                        forked_task_registry[forked_task_key] = this;
                     }
                 ]
             ];
