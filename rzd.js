@@ -13,6 +13,14 @@
     );
 
     app.value(
+        'SEAT_POSITIONS',
+        {
+            'Плац': ['up', 'dn', 'lup', 'ldn'],
+            'Купе': ['up', 'dn']
+        }
+    );
+
+    app.value(
         'ANY_SEAT',
         'any_seat'
     );
