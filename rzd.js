@@ -5,7 +5,8 @@
 (function (angular) {
     'use strict';
 
-    var app = angular.module('rzd', ['ngResource', 'rzd_client_config']);
+    var app = angular.module('rzd', ['ngResource']),
+        $injector = angular.injector(['ng', 'rzd_client_config']);
 
     app.value(
         'SEAT_TYPES',
@@ -18,7 +19,7 @@
             'Плац': ['up', 'dn', 'lup', 'ldn'],
             'Купе': ['up', 'dn']
         }
-    );
+   );
 
     app.value(
         'ANY_SEAT',
@@ -34,113 +35,6 @@
         'RZD_TIME_FORMAT',
         'HH:mm'
     );
-
-    app.factory('StationsSuggester', ['$resource', 'GLOBAL_CONFIG',
-        function ($resource, GLOBAL_CONFIG) {
-            return $resource([
-                "http://",
-                GLOBAL_CONFIG.api_host,
-                GLOBAL_CONFIG.api_prefix,
-                "/suggester_proxy?starts_with=:startsWith"
-            ].join(''));
-        }]
-    );
-
-    app.factory('TrackedStationsLookup', ['$resource', 'GLOBAL_CONFIG',
-        function ($resource, GLOBAL_CONFIG) {
-            return $resource(["http://",
-                GLOBAL_CONFIG.api_host,
-                GLOBAL_CONFIG.api_prefix,
-                "fully_tracked"
-            ].join(''));
-        }]
-    );
-
-    app.factory('RZDLookup', ['$resource', 'GLOBAL_CONFIG',
-        function ($resource, GLOBAL_CONFIG) {
-            return $resource(
-                [
-                    "http://",
-                    GLOBAL_CONFIG.api_host,
-                    GLOBAL_CONFIG.api_prefix,
-                    "fetch/:kind"
-                ].join(''),
-                null,
-                {
-                    fetchList: {
-                        method: 'GET',
-                        params: {kind: 'list'},
-                        responseType: "json"
-                    },
-                    fetchDetails: {
-                        method: 'GET',
-                        params: {kind: 'detail'},
-                        responseType: "json"
-                    }
-                }
-            );
-        }]
-    );
-
-    app.factory('StorageLookup', [
-        '$resource',
-        '$filter',
-        'RZD_DATE_FORMAT',
-        'RZD_TIME_FORMAT',
-        'GLOBAL_CONFIG',
-        function (
-                  $resource,
-                  $filter,
-                  RZD_DATE_FORMAT,
-                  RZD_TIME_FORMAT,
-                  GLOBAL_CONFIG
-        ) {
-            return $resource(["http://",
-                GLOBAL_CONFIG.api_host,
-                GLOBAL_CONFIG.storage_prefix,
-                'fetch/:kind'
-            ].join(''), null, {
-                fetchList: {
-                    method: 'GET',
-                    params: {kind: 'list'},
-                    responseType: "json",
-                    isArray: true,
-                    transformResponse: function (data) {
-                        var rows = data.rows,
-                            for_date, now, current_date, current_time,
-                            not_this_day,
-                            result = [];
-
-                        if (rows.length > 0) {
-                            for_date = rows[0].key[3];
-                            now = Date.now();
-                            current_date = $filter('date')(
-                                now, RZD_DATE_FORMAT
-                            );
-                            current_time = $filter('date')(
-                                now, RZD_TIME_FORMAT
-                            );
-                            not_this_day = for_date !== current_date;
-
-                            rows.forEach(function (item) {
-                                if (not_this_day ||
-                                    item.value.time0 > current_time) {
-                                    result.push(item.value);
-                                }
-                            });
-                        }
-
-                        return result;
-                    }
-                },
-                fetchDetails: {
-                    method: 'GET',
-                    params: {kind: 'detail'},
-                    responseType: "json"
-                }
-            });
-        }
-    ]);
 
     app.factory('encodeDict', function () {
         return function (o, skip_enc, skip_empty_items) {
@@ -250,85 +144,12 @@
         }]
     );
 
-    app.service('TrackingTask', [
-        '$window',
-        'GLOBAL_CONFIG',
-        'Watcher',
-        'ANY_SEAT',
-
-        function ($window, GLOBAL_CONFIG, Watcher, ANY_SEAT) {
-            var task_registry = {},
-                forked_task_registry = {},
-                getWSConnection,
-                Task;
-
-            getWSConnection = (function ($window) {
+    $injector.invoke(['GLOBAL_CONFIG', '$window',
+        function (GLOBAL_CONFIG, $window) {
+        var incoming_hooks = [],
+            reconnect_hooks = [],
+            getWSConnection = (function () {
                 var connection;
-
-                function WSConstructor() {
-                    this.connect();
-                }
-
-                WSConstructor.prototype.connect = function () {
-                    var reconnect = this.reconnect.bind(this);
-
-                    if (this.ws) {
-                        if (this.ws.readyState === this.ws.CLOSED) {
-                            delete this.ws;
-                        } else {
-                            return;
-                        }
-                    }
-
-                    this.ws = new $window.WebSocket(["ws://",
-                            GLOBAL_CONFIG.api_host,
-                            GLOBAL_CONFIG.api_prefix,
-                            "ws"
-                        ].join(''));
-
-
-                    this.ws.onmessage = function (event) {
-                        var msg = event.data,
-                            parts = msg.split(' '),
-                            task_key = parts.shift(),
-                            task = Task.getByKey(task_key);
-
-                        console.log('ws <= ' + msg);
-
-                        if (task) {
-                            task.processReport(parts.join(' '));
-                        }
-                    };
-
-                    this.ws.onclose = function () {
-                        console.log("Connection close");
-                        $window.setTimeout(reconnect, 5000);
-                    };
-                };
-
-                WSConstructor.prototype.reconnect = function () {
-                    var that = this;
-
-                    this.connect();
-
-                    Task.getAll(function (task) {
-                        task.recover(that);
-                    });
-                };
-
-                WSConstructor.prototype.send = function (msg) {
-                    console.log('ws => ' + msg);
-
-                    if (this.ws.readyState === this.ws.CONNECTING) {
-                        this.ws.addEventListener('open', function () {
-                            this.send(msg);
-                        });
-                    } else if (this.ws.readyState === this.ws.OPEN) {
-                        this.ws.send(msg);
-                    } else {
-                        throw new Error('web socket is closed');
-                    }
-                };
 
                 return function () {
                     if (connection === undefined) {
@@ -337,320 +158,735 @@
 
                     return connection;
                 };
-            }($window));
+            }());
 
-            Task = function (
-                from,
-                to,
-                date,
-                s_from,
-                s_to,
-                error_proof,
-                limited
-            ) {
-                var key = Task.makeKey(from, to, date),
-                    instance = Task.getByKey(key);
+        function WSConstructor() {
+            this.connect();
+        }
 
-                if (instance) {
-                    return instance;
+        WSConstructor.prototype.connect = function () {
+            var reconnect = this.reconnect.bind(this);
+
+            if (this.ws) {
+                if (this.ws.readyState === this.ws.CLOSED) {
+                    delete this.ws;
+                } else {
+                    return;
                 }
+            }
 
-                this.input = {
-                    from: from,
-                    to: to,
-                    date: date
-                };
-                this.key = key;
+            this.ws = new $window.WebSocket(["ws://",
+                    GLOBAL_CONFIG.api_host,
+                    GLOBAL_CONFIG.api_prefix,
+                    "ws"
+                ].join(''));
 
-                this.from = s_from;
-                this.to = s_to;
 
-                this.error_proof = error_proof || false;
-
-                this.watchers = {};
-                this.limited = Boolean(limited);
-
-                this.state = {
-                    attempts_done: 0,
-                    errors_happened: 0,
-                    status: this.IN_PROGRESS
-                };
-
-                this.result = {
-                    trains_found: [],
-                    errors: []
-                };
-
-                task_registry[key] = this;
+            this.ws.onmessage = function (event) {
+                incoming_hooks.forEach(function (hook) {
+                    hook.call(null, event.data);
+                });
             };
 
-            Task.makeKey = function (from, to, date) {
-                return [this.prototype.TYPE, from, to, date].join(',');
+            this.ws.onclose = function () {
+                console.log("Connection close");
+                $window.setTimeout(reconnect, 5000);
             };
+        };
 
-            Task.getByKey = function (key) {
-                return task_registry[key] || forked_task_registry[key];
-            };
+        WSConstructor.prototype.reconnect = function () {
+            var connection = this;
+            this.connect();
+            reconnect_hooks.forEach(function (hook) {
+                hook.call(null, connection);
+            });
+        };
 
-            Task.getAll = function (callback) {
-                angular.forEach(task_registry, callback);
-            };
+        WSConstructor.prototype.send = function (msg) {
+            console.log('ws => ' + msg);
 
-            Task.prototype = {
-                IN_PROGRESS: 0,
-                FAILURE: 2,
-                STOPPED: 4,
-                FATAL_FAILURE: 6,
-                TRACKING_ERRORS_LIMIT: 5,
-                TYPE: 'list'
-            };
+            if (this.ws.readyState === this.ws.CONNECTING) {
+                this.ws.addEventListener('open', function () {
+                    this.send(msg);
+                });
+            } else if (this.ws.readyState === this.ws.OPEN) {
+                this.ws.send(msg);
+            } else {
+                throw new Error('web socket is closed');
+            }
+        };
 
-            Task.prototype.recover = function (connection) {
-                var that = this,
-                    succeeded_cnt = 0;
 
-                if (this.isActive()) {
-                    console.log("Trying to recover " + this.key);
+        app.factory('StationsSuggester', ['$resource',
+            function ($resource) {
+                return $resource([
+                    "http://",
+                    GLOBAL_CONFIG.api_host,
+                    GLOBAL_CONFIG.api_prefix,
+                    "/suggester_proxy?starts_with=:startsWith"
+                ].join(''));
+            }]
+        );
 
-                    angular.forEach(this.watchers, function (watcher) {
-                        if (!watcher.isSucceeded()) {
-                            that.pushWatcher(watcher, connection);
-                        } else {
-                            succeeded_cnt += 1;
+        app.factory('TrackedStationsLookup', ['$resource',
+            function ($resource) {
+                return $resource(["http://",
+                    GLOBAL_CONFIG.api_host,
+                    GLOBAL_CONFIG.api_prefix,
+                    "fully_tracked"
+                ].join(''));
+            }]
+        );
+
+        app.factory('RZDLookup', ['$resource',
+            function ($resource) {
+                return $resource(
+                    [
+                        "http://",
+                        GLOBAL_CONFIG.api_host,
+                        GLOBAL_CONFIG.api_prefix,
+                        "fetch/:kind"
+                    ].join(''),
+                    null,
+                    {
+                        fetchList: {
+                            method: 'GET',
+                            params: {kind: 'list'},
+                            responseType: "json"
+                        },
+                        fetchDetails: {
+                            method: 'GET',
+                            params: {kind: 'detail'},
+                            responseType: "json"
                         }
-                    });
-
-                    if (this.watchers.length === succeeded_cnt) {
-                        this.stop();
-                    }
-                }
-            };
-
-            Task.prototype.restart = function () {
-                this.state.status = this.IN_PROGRESS;
-                angular.forEach(
-                    this.watchers,
-                    function (watcher) {
-                        watcher.restart(true);
                     }
                 );
-                this.recover();
-            };
+            }]
+        );
 
-            Task.prototype.restartWatcher = function (watcher) {
-                if (this.watchers[watcher.key] !== undefined) {
-                    if (watcher.restart(this.isFailed())) {
-                        this.pushWatcher(watcher);
-                    }
-                }
-            };
-
-
-            Task.prototype.addWatcher = function (
-                train_num,
-                dep_time,
-                seat_type,
-                car_num,
-                seat_num,
-                seat_pos
+        app.factory('StorageLookup', [
+            '$resource',
+            '$filter',
+            'RZD_DATE_FORMAT',
+            'RZD_TIME_FORMAT',
+            function (
+                      $resource,
+                      $filter,
+                      RZD_DATE_FORMAT,
+                      RZD_TIME_FORMAT
             ) {
-                var w;
+                return $resource(["http://",
+                    GLOBAL_CONFIG.api_host,
+                    GLOBAL_CONFIG.storage_prefix,
+                    'fetch/:kind'
+                ].join(''), null, {
+                    fetchList: {
+                        method: 'GET',
+                        params: {kind: 'list'},
+                        responseType: "json",
+                        isArray: true,
+                        transformResponse: function (data) {
+                            var rows = data.rows,
+                                for_date, now, current_date, current_time,
+                                not_this_day,
+                                result = [];
 
-                if (this.limited  && seat_type !== ANY_SEAT) {
-                    throw('Inapproperiate watcher');
-                }
+                            if (rows.length > 0) {
+                                for_date = rows[0].key[3];
+                                now = Date.now();
+                                current_date = $filter('date')(
+                                    now, RZD_DATE_FORMAT
+                                );
+                                current_time = $filter('date')(
+                                    now, RZD_TIME_FORMAT
+                                );
+                                not_this_day = for_date !== current_date;
 
-                w = new Watcher(
+                                rows.forEach(function (item) {
+                                    if (not_this_day ||
+                                        item.value.time0 > current_time) {
+                                        result.push(item.value);
+                                    }
+                                });
+                            }
+
+                            return result;
+                        }
+                    },
+                    fetchDetails: {
+                        method: 'GET',
+                        params: {kind: 'detail'},
+                        responseType: "json"
+                    }
+                });
+            }
+        ]);
+
+        app.service('TrackingTask', [
+            '$window',
+            'Watcher',
+            'ANY_SEAT',
+
+            function ($window, Watcher, ANY_SEAT) {
+                var task_registry = {},
+                    forked_task_registry = {},
+                    Task;
+
+                Task = function (
+                    from,
+                    to,
+                    date,
+                    s_from,
+                    s_to,
+                    error_proof,
+                    limited
+                ) {
+                    var key = Task.makeKey(from, to, date),
+                        instance = Task.getByKey(key);
+
+                    if (instance) {
+                        return instance;
+                    }
+
+                    this.input = {
+                        from: from,
+                        to: to,
+                        date: date
+                    };
+                    this.key = key;
+
+                    this.from = s_from;
+                    this.to = s_to;
+
+                    this.error_proof = error_proof || false;
+
+                    this.watchers = {};
+                    this.limited = Boolean(limited);
+
+                    this.state = {
+                        attempts_done: 0,
+                        errors_happened: 0,
+                        status: this.IN_PROGRESS
+                    };
+
+                    this.result = {
+                        trains_found: [],
+                        errors: []
+                    };
+
+                    task_registry[key] = this;
+                };
+
+                Task.makeKey = function (from, to, date) {
+                    return [this.prototype.TYPE, from, to, date].join(',');
+                };
+
+                Task.getByKey = function (key) {
+                    return task_registry[key] || forked_task_registry[key];
+                };
+
+                Task.getAll = function (callback) {
+                    angular.forEach(task_registry, callback);
+                };
+
+                Task.prototype = {
+                    IN_PROGRESS: 0,
+                    FAILURE: 2,
+                    STOPPED: 4,
+                    FATAL_FAILURE: 6,
+                    TRACKING_ERRORS_LIMIT: 5,
+                    TYPE: 'list'
+                };
+
+                Task.prototype.recover = function (connection) {
+                    var that = this,
+                        succeeded_cnt = 0;
+
+                    if (this.isActive()) {
+                        console.log("Trying to recover " + this.key);
+
+                        angular.forEach(this.watchers, function (watcher) {
+                            if (!watcher.isSucceeded()) {
+                                that.pushWatcher(watcher, connection);
+                            } else {
+                                succeeded_cnt += 1;
+                            }
+                        });
+
+                        if (this.watchers.length === succeeded_cnt) {
+                            this.stop();
+                        }
+                    }
+                };
+
+                reconnect_hooks.push(function (connection) {
+                    Task.getAll(function (task) {
+                        task.recover(connection);
+                    });
+                });
+
+                Task.prototype.restart = function () {
+                    this.state.status = this.IN_PROGRESS;
+                    angular.forEach(
+                        this.watchers,
+                        function (watcher) {
+                            watcher.restart(true);
+                        }
+                    );
+                    this.recover();
+                };
+
+                Task.prototype.restartWatcher = function (watcher) {
+                    if (this.watchers[watcher.key] !== undefined) {
+                        if (watcher.restart(this.isFailed())) {
+                            this.pushWatcher(watcher);
+                        }
+                    }
+                };
+
+
+                Task.prototype.addWatcher = function (
                     train_num,
                     dep_time,
                     seat_type,
                     car_num,
                     seat_num,
                     seat_pos
-                );
+                ) {
+                    var w;
 
-                if (this.watchers[w.key] === undefined) {
-                    this.watchers[w.key] = w;
-                    this.pushWatcher(w);
-                }
-
-                return this.watchers[w.key];
-            };
-
-            Task.prototype.pushWatcher = function (w, connection) {
-                var args = ['watch', this.key, w.key];
-
-                if (this.error_proof) {
-                    args.push('ignore:NOT_FOUND');
-                }
-
-                connection = connection || getWSConnection();
-
-                connection.send(args.join(' '));
-            };
-
-            Task.prototype.send = function (msg) {
-                getWSConnection().send(msg);
-            };
-
-            Task.prototype.removeWatcher = function (watcher) {
-                if (this.watchers[watcher.key] !== undefined &&
-                    !this.watchers[watcher.key].isSucceeded()) {
-                    delete this.watchers[watcher.key];
-
-                    if (this.isActive() && watcher.isAccepted()) {
-                        this.send(
-                            ['unwatch', this.key, watcher.key].join(' ')
-                        );
+                    if (this.limited  && seat_type !== ANY_SEAT) {
+                        throw 'Inapproperiate watcher';
                     }
 
-                    if (Object.keys(this.watchers).length === 0) {
-                        this.stop();
+                    w = new Watcher(
+                        train_num,
+                        dep_time,
+                        seat_type,
+                        car_num,
+                        seat_num,
+                        seat_pos
+                    );
+
+                    if (this.watchers[w.key] === undefined) {
+                        this.watchers[w.key] = w;
+                        this.pushWatcher(w);
                     }
-                }
-            };
 
-            Task.prototype.isFailed = function () {
-                return (this.state.status === this.FAILURE) ||
-                        (this.state.status === this.FATAL_FAILURE);
-            };
+                    return this.watchers[w.key];
+                };
 
-            Task.prototype.isRecoverable = function () {
-                return this.state.status === this.FAILURE;
-            };
+                Task.prototype.pushWatcher = function (w, connection) {
+                    var args = ['watch', this.key, w.key];
 
-            Task.prototype.isStopped = function () {
-                return this.state.status === this.STOPPED;
-            };
-
-            Task.prototype.isActive = function () {
-                return this.state.status === this.IN_PROGRESS;
-            };
-
-            Task.prototype.stop = function () {
-                this.state.status = this.STOPPED;
-                getWSConnection().send(['remove', this.key].join(' '));
-                delete task_registry[this.key];
-                return this;
-            };
-
-            Task.prototype.setFallbackEmail = function (email) {
-                if (this.isActive()) {
-                    this.fallback_email = email;
-
-                    getWSConnection().send([
-                        'set_fallbak_email_for',
-                        this.key,
-                        this.fallback_email
-                    ].join(' '));
-                    return this;
-                }
-            };
-
-            Task.prototype.GRAMMAR = [
-                [
-                    /^(\d)(\.|\-)(?:\s(.+))?$/,
-                    function (status, prefix, error_json) {
-                        this.state.attempts_done += 1;
-                        this.state.status = parseInt(status, 10);
-
-                        if (prefix === '-') {
-                            this.state.errors_happened += 1;
-                        } else {
-                            this.state.errors_happened = 0;
-                        }
-
-                        if (this.isFailed()) {
-                            this.result.errors = angular.fromJson(error_json);
-                            this.onFailure && this.onFailure();
-                        }
+                    if (this.error_proof) {
+                        args.push('ignore:NOT_FOUND');
                     }
-                ],
-                [
-                    /^\+W|\-W|stopped|has been scheduled/,
-                    angular.noop
-                ],
-                [
-                    /^found (.+)$/,
-                    function (json_str) {
-                        var watchers = angular.fromJson(json_str),
-                            watchers_got_succeeded = [];
 
-                        angular.forEach(
-                            watchers,
-                            function (task, cars_found, w_key) {
-                                var watcher = task.watchers[w_key];
+                    connection = connection || getWSConnection();
 
-                                if (
-                                    watcher && watcher.claimSucceeded(
-                                        cars_found
-                                    )
-                                ) {
-                                    watchers_got_succeeded.push(watcher);
-                                }
-                            }.bind(null, this)
-                        );
+                    connection.send(args.join(' '));
+                };
 
-                        if (
-                            watchers_got_succeeded.length > 0 && this.onSuccess
-                        ) {
-                            this.onSuccess(
-                                watchers_got_succeeded
+                Task.prototype.removeWatcher = function (watcher) {
+                    if (this.watchers[watcher.key] !== undefined &&
+                        !this.watchers[watcher.key].isSucceeded()) {
+                        delete this.watchers[watcher.key];
+
+                        if (this.isActive() && watcher.isAccepted()) {
+                            getWSConnection().send(
+                                ['unwatch', this.key, watcher.key].join(' ')
                             );
                         }
+
+                        if (Object.keys(this.watchers).length === 0) {
+                            this.stop();
+                        }
                     }
-                ],
-                [
-                    /^lost (.+)$/,
-                    function (json_str) {
-                        var data = angular.fromJson(json_str),
-                            watchers = [];
+                };
 
-                        angular.forEach(data, function (task, w_key) {
-                            var watcher = task.watchers[w_key];
+                Task.prototype.isFailed = function () {
+                    return (this.state.status === this.FAILURE) ||
+                            (this.state.status === this.FATAL_FAILURE);
+                };
 
-                            if (watcher) {
-                                watcher.claimFailed();
-                                watchers.push(watcher);
+                Task.prototype.isRecoverable = function () {
+                    return this.state.status === this.FAILURE;
+                };
+
+                Task.prototype.isStopped = function () {
+                    return this.state.status === this.STOPPED;
+                };
+
+                Task.prototype.isActive = function () {
+                    return this.state.status === this.IN_PROGRESS;
+                };
+
+                Task.prototype.stop = function () {
+                    this.state.status = this.STOPPED;
+                    getWSConnection().send(['remove', this.key].join(' '));
+                    delete task_registry[this.key];
+                    return this;
+                };
+
+                Task.prototype.setFallbackEmail = function (email) {
+                    if (this.isActive()) {
+                        this.fallback_email = email;
+
+                        getWSConnection().send([
+                            'set_fallbak_email_for',
+                            this.key,
+                            this.fallback_email
+                        ].join(' '));
+                        return this;
+                    }
+                };
+
+                Task.prototype.GRAMMAR = [
+                    [
+                        /^(\d)(\.|\-)(?:\s(.+))?$/,
+                        function (status, prefix, error_json) {
+                            this.state.attempts_done += 1;
+                            this.state.status = parseInt(status, 10);
+
+                            if (prefix === '-') {
+                                this.state.errors_happened += 1;
+                            } else {
+                                this.state.errors_happened = 0;
                             }
-                        }.bind(null, this));
 
-                        if (this.onTrainsLost) {
-                            this.onTrainsLost(watchers);
+                            if (this.isFailed()) {
+                                this.result.errors = angular.fromJson(error_json);
+                                if (this.onFailure) {
+                                    this.onFailure();
+                                }
+                            }
+                        }
+                    ],
+                    [
+                        /^\+W|\-W|stopped|has been scheduled/,
+                        angular.noop
+                    ],
+                    [
+                        /^found (.+)$/,
+                        function (json_str) {
+                            var watchers = angular.fromJson(json_str),
+                                watchers_got_succeeded = [];
+
+                            angular.forEach(
+                                watchers,
+                                function (task, cars_found, w_key) {
+                                    var watcher = task.watchers[w_key];
+
+                                    if (
+                                        watcher && watcher.claimSucceeded(
+                                            cars_found
+                                        )
+                                    ) {
+                                        watchers_got_succeeded.push(watcher);
+                                    }
+                                }.bind(null, this)
+                            );
+
+                            if (
+                                watchers_got_succeeded.length > 0 && this.onSuccess
+                            ) {
+                                this.onSuccess(
+                                    watchers_got_succeeded
+                                );
+                            }
+                        }
+                    ],
+                    [
+                        /^lost (.+)$/,
+                        function (json_str) {
+                            var data = angular.fromJson(json_str),
+                                watchers = [];
+
+                            angular.forEach(data, function (task, w_key) {
+                                var watcher = task.watchers[w_key];
+
+                                if (watcher) {
+                                    watcher.claimFailed();
+                                    watchers.push(watcher);
+                                }
+                            }.bind(null, this));
+
+                            if (this.onTrainsLost) {
+                                this.onTrainsLost(watchers);
+                            }
+                        }
+                    ],
+                    [
+                        /^fork (.+)$/,
+                        function (forked_task_key) {
+                            forked_task_registry[forked_task_key] = this;
+                        }
+                    ]
+                ];
+
+                Task.prototype.processReport = function (msg) {
+                    var re, callback, i, l, res;
+
+                    for (i = 0, l = this.GRAMMAR.length; i < l; i += 1) {
+                        re = this.GRAMMAR[i][0];
+                        callback = this.GRAMMAR[i][1];
+                        res = re.exec(msg);
+
+                        if (res !== null) {
+                            callback.apply(this, res.splice(1));
+
+                            if (this.onUpdate) {
+                                this.onUpdate();
+                            }
+                            return;
                         }
                     }
-                ],
-                [
-                    /^fork (.+)$/,
-                    function (forked_task_key) {
-                        forked_task_registry[forked_task_key] = this;
+                    console.log('not parsed');
+                };
+
+                incoming_hooks.push(function (msg) {
+                    var parts = msg.split(' '),
+                        task_key = parts.shift(),
+                        task = Task.getByKey(task_key);
+
+                    console.log('ws <= ' + msg);
+
+                    if (task) {
+                        task.processReport(parts.join(' '));
                     }
-                ]
-            ];
+                });
 
-            Task.prototype.processReport = function (msg) {
-                var re, callback, i, l, res;
+                return Task;
+            }
+        ]);
 
-                for (i = 0, l = this.GRAMMAR.length; i < l; i += 1) {
-                    re = this.GRAMMAR[i][0];
-                    callback = this.GRAMMAR[i][1];
-                    res = re.exec(msg);
+        app.service(
+            'TrackingTaskPlus',
+            [
+                'TrackingTask', 'ANY_SEAT',
+                /**
+                 * A Tracking task subclass awared about trains.
+                 */
+                function (TrackingTask, ANY_SEAT) {
+                    var Noop = angular.noop,
+                        TaskPlus = function (
+                            from, to, date, s_from, s_to, error_proof, limited
+                        ) {
+                            var instance = TaskPlus.superclass.call(
+                                this, from, to, date, s_from, s_to, error_proof,
+                                limited
+                            );
 
-                    if (res !== null) {
-                        callback.apply(this, res.splice(1));
+                            if (instance) {
+                                return instance;
+                            }
 
-                        if (this.onUpdate) {
-                            this.onUpdate();
+                            this.trains = {};
+                        };
+
+                    Noop.prototype = TrackingTask.prototype;
+                    TaskPlus.prototype = new Noop();
+                    TaskPlus.prototype.constructor = TaskPlus;
+                    TaskPlus.superclass = TrackingTask;
+
+                    angular.forEach(
+                        TrackingTask,
+                        function (prop, name) {
+                            TaskPlus[name] = prop;
                         }
-                        return;
-                    }
+                    );
+
+                    TaskPlus.generateTrainKey = function (
+                        train_number, dep_date, dep_time
+                    ) {
+                        return [dep_date, dep_time, train_number].join('_');
+                    };
+
+                    TaskPlus.prototype.makeTrainKey = function (
+                        train_number, dep_time
+                    ) {
+                        return TaskPlus.generateTrainKey(
+                            train_number, this.input.date, dep_time
+                        );
+                    };
+
+                    TaskPlus.prototype.addWatcher = function (
+                        train_number, seat_type, dep_time
+                    ) {
+                        var watcher = TaskPlus.superclass.prototype.addWatcher.call(
+                            this, train_number, dep_time, seat_type
+                        ),
+                        train,
+                        train_key = this.makeTrainKey(train_number, dep_time);
+
+                        if (this.trains[train_key] === undefined) {
+                            this.trains[train_key] = {
+                                train_number: train_number,
+                                dep_time: dep_time,
+                                watchers: [],
+                                departured: false,
+                                omni: false
+                            };
+                        }
+
+                        train = this.trains[train_key];
+                        watcher.train_key = train_key;
+
+                        train.watchers.push(watcher);
+
+                        return watcher;
+                    };
+
+                    TaskPlus.prototype.onDeparture = function (data) {
+                        angular.forEach(
+                            data,
+                            function (dep_time, train_number) {
+                                var train_key = this.makeTrainKey(
+                                    train_number, dep_time
+                                );
+
+                                if (this.trains[train_key]) {
+                                    this.trains[train_key].departured = true;
+                                } else {
+                                    console.warn(train_key);
+                                }
+                            }.bind(this)
+                        );
+                    };
+
+                    TaskPlus.prototype.removeWatcher = function (watcher) {
+                        var train = this.trains[watcher.train_key],
+                            train_index = train.watchers.indexOf(watcher),
+                            result = TaskPlus.superclass.prototype.removeWatcher.call(
+                                this, watcher
+                            );
+
+                        if (train_index !== -1) {
+                            train.watchers.splice(train_index, 1);
+                        }
+
+                        if (train.watchers.length === 0) {
+                            delete this.trains[watcher.train_key];
+                        }
+
+                        return result;
+                    };
+
+                    TaskPlus.prototype.removeTrainByKey = function (train_key) {
+                        if (this.trains[train_key]) {
+                            angular.forEach(
+                                this.trains[train_key].watchers,
+                                TaskPlus.superclass.prototype.removeWatcher.bind(this)
+                            );
+                        }
+
+                        delete this.trains[train_key];
+                    };
+
+                    TaskPlus.prototype.askForDetails = function (
+                        train_number, dep_time
+                    ) {
+                        var train_key = this.makeTrainKey(
+                                train_number, dep_time
+                            );
+
+                        angular.forEach(
+                            this.trains[train_key].watchers,
+                            function (watcher) {
+                                watcher.accept();
+                            }
+                        );
+
+                        if (this.trains[train_key]) {
+                            getWSConnection().send(
+                                [
+                                    'get_details',
+                                    this.key,
+                                    train_number,
+                                    dep_time
+                                ].join(' ')
+                            );
+                            this.waiting_for_details = true;
+                        } else {
+                            console.warn(train_key);
+                        }
+                    };
+
+                    TaskPlus.prototype.getTrainsCount = function () {
+                        return Object.keys(this.trains).length;
+                    };
+
+                    TaskPlus.prototype.GRAMMAR.push(
+                        [
+                            /^details (.+)$/,
+                            function (json_str) {
+                                var data = JSON.parse(json_str),
+                                    train_number = data.info.number,
+                                    dep_time = data.info.time0,
+                                    train_key = this.makeTrainKey(
+                                        train_number, dep_time
+                                    );
+
+                                this.waiting_for_details = false;
+
+                                if (this.onTrainDetails) {
+                                    this.onTrainDetails(train_key, data);
+                                }
+                            }
+                        ],
+                        [
+                            /^vanished (\S+) (\d{2}:\d{2})$/,
+                            function (train_number, dep_time) {
+                                var train_key = this.makeTrainKey(
+                                        train_number, dep_time
+                                    );
+
+                                this.waiting_for_details = false;
+
+                                angular.forEach(
+                                    this.trains[train_key].watchers,
+                                    function (watcher) {
+                                        if (watcher.isAccepted()) {
+                                            watcher.restart();
+                                        }
+                                    }
+                                );
+                            }
+                        ],
+                        [
+                            /^dep (.+)$/,
+                            function (json_str) {
+                                var data = JSON.parse(json_str);
+
+                                angular.forEach(
+                                    data,
+                                    function (dep_time, train_number) {
+                                        var train_key = this.makeTrainKey(
+                                            train_number, dep_time
+                                        );
+
+                                        if (this.trains[train_key]) {
+                                            this.trains[train_key].departured = true;
+
+                                            if (this.onTrainDeparture) {
+                                                this.onTrainDeparture(train_key);
+                                            }
+                                        } else {
+                                            console.warn(train_key);
+                                        }
+                                    }.bind(this)
+                                );
+                            }
+                        ]
+                    );
+
+                    return TaskPlus;
                 }
-                console.log('not parsed');
-            };
+            ]
+        );
 
-            return Task;
-        }
-    ]);
+    }]);
 
     return app;
 }(angular));
