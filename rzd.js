@@ -6,7 +6,7 @@
     'use strict';
 
     var app = angular.module('rzd', ['ngResource']),
-        $injector = angular.injector(['ng', 'rzd_client_config']);
+        config_injector = angular.injector(['ng', 'rzd_client_config']);
 
     app.value(
         'SEAT_TYPES',
@@ -144,10 +144,11 @@
         }]
     );
 
-    $injector.invoke(['GLOBAL_CONFIG', '$window',
+    config_injector.invoke(['GLOBAL_CONFIG', '$window',
         function (GLOBAL_CONFIG, $window) {
         var incoming_hooks = [],
             reconnect_hooks = [],
+            auth_credentials,
             getWSConnection = (function () {
                 var connection;
 
@@ -181,6 +182,13 @@
                     "ws"
                 ].join(''));
 
+            if (auth_credentials) {
+                this.send([
+                    'login',
+                    auth_credentials.email,
+                    auth_credentials.checking_code
+                ].join(' '));
+            }
 
             this.ws.onmessage = function (event) {
                 incoming_hooks.forEach(function (hook) {
@@ -886,6 +894,16 @@
             ]
         );
 
+        app.service('CYTLogin', function () {
+            return function (email, checking_code) {
+                if (email && checking_code) {
+                    auth_credentials = {
+                        email: email,
+                        checking_code: checking_code
+                    }
+                }
+            }
+        });
     }]);
 
     return app;
