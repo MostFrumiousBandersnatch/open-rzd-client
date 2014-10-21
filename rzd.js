@@ -205,7 +205,7 @@
             this.ws.onmessage = function (event) {
                 var msg = event.data;
 
-                if (msg.indexOf('login_result') == 0) {
+                if (msg.indexOf('login_result') === 0) {
                     CPI.report_auth_success(msg.split(' ')[1] === 'success');
                 } else {
                     CPI.incoming_hooks.forEach(function (hook) {
@@ -411,6 +411,23 @@
                     return task_registry[key] || forked_task_registry[key];
                 };
 
+                Task.parseKey = function (key) {
+                    var parts = key.split(',');
+
+                    if (parts.length !== 4) {
+                        throw new Error('wrong task key');
+                    }
+
+                    return {
+                        type: parts[0],
+                        from: parts[1],
+                        to: parts[2],
+                        date: parts[3]
+                    };
+
+
+                };
+
                 Task.getAll = function (callback) {
                     angular.forEach(task_registry, callback);
                 };
@@ -580,7 +597,9 @@
                             }
 
                             if (this.isFailed()) {
-                                this.result.errors = angular.fromJson(error_json);
+                                this.result.errors = angular.fromJson(
+                                    error_json
+                                );
                                 if (this.onFailure) {
                                     this.onFailure();
                                 }
@@ -612,9 +631,8 @@
                                 }.bind(null, this)
                             );
 
-                            if (
-                                watchers_got_succeeded.length > 0 && this.onSuccess
-                            ) {
+                            if (watchers_got_succeeded.length > 0 &&
+                                this.onSuccess) {
                                 this.onSuccess(
                                     watchers_got_succeeded
                                 );
@@ -719,6 +737,7 @@
                     TaskPlus.prototype = new Noop();
                     TaskPlus.prototype.constructor = TaskPlus;
                     TaskPlus.superclass = TrackingTask;
+                    TaskPlus.SC = TaskPlus.superclass;
 
                     angular.forEach(
                         TrackingTask,
@@ -744,7 +763,7 @@
                     TaskPlus.prototype.addWatcher = function (
                         train_number, seat_type, dep_time
                     ) {
-                        var watcher = TaskPlus.superclass.prototype.addWatcher.call(
+                        var watcher = TaskPlus.SC.prototype.addWatcher.call(
                             this, train_number, dep_time, seat_type
                         ),
                         train,
@@ -788,7 +807,7 @@
                     TaskPlus.prototype.removeWatcher = function (watcher) {
                         var train = this.trains[watcher.train_key],
                             train_index = train.watchers.indexOf(watcher),
-                            result = TaskPlus.superclass.prototype.removeWatcher.call(
+                            result = TaskPlus.SC.prototype.removeWatcher.call(
                                 this, watcher
                             );
 
@@ -807,7 +826,7 @@
                         if (this.trains[train_key]) {
                             angular.forEach(
                                 this.trains[train_key].watchers,
-                                TaskPlus.superclass.prototype.removeWatcher.bind(this)
+                                TaskPlus.SC.prototype.removeWatcher.bind(this)
                             );
                         }
 
@@ -897,10 +916,14 @@
                                         );
 
                                         if (this.trains[train_key]) {
-                                            this.trains[train_key].departured = true;
+                                            this.trains[
+                                                train_key
+                                            ].departured = true;
 
                                             if (this.onTrainDeparture) {
-                                                this.onTrainDeparture(train_key);
+                                                this.onTrainDeparture(
+                                                    train_key
+                                                );
                                             }
                                         } else {
                                             console.warn(train_key);
@@ -922,10 +945,10 @@
                     CPI.auth_credentials = {
                         email: email,
                         checking_code: checking_code
-                    }
+                    };
                     CPI.auth_success_callback = success_callback;
                 }
-            }
+            };
         });
     }]);
 
