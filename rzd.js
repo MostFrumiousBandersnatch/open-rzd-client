@@ -146,9 +146,21 @@
 
     config_injector.invoke(['GLOBAL_CONFIG', '$window',
         function (GLOBAL_CONFIG, $window) {
-        var incoming_hooks = [],
-            reconnect_hooks = [],
-            auth_credentials,
+        var CPI = {
+                incoming_hooks: [],
+                reconnect_hooks: [],
+                auth_credentials: undefined,
+                auth_success: false,
+                auth_success_callback: undefined,
+                report_auth_success: function(success) {
+                    this.auth_success = success;
+                    if (success && this.auth_success_callback) {
+                        this.auth_success_callback(
+                            this.auth_credentials
+                        )
+                    }
+                }
+            },
             getWSConnection = (function () {
                 var connection;
 
@@ -177,23 +189,29 @@
             }
 
             this.ws = new $window.WebSocket(["ws://",
-                    GLOBAL_CONFIG.api_host,
-                    GLOBAL_CONFIG.api_prefix,
-                    "ws"
-                ].join(''));
+                GLOBAL_CONFIG.api_host,
+                GLOBAL_CONFIG.api_prefix,
+                "ws"
+            ].join(''));
 
-            if (auth_credentials) {
+            if (CPI.auth_credentials) {
                 this.send([
                     'login',
-                    auth_credentials.email,
-                    auth_credentials.checking_code
+                    CPI.auth_credentials.email,
+                    CPI.auth_credentials.checking_code
                 ].join(' '));
             }
 
             this.ws.onmessage = function (event) {
-                incoming_hooks.forEach(function (hook) {
-                    hook.call(null, event.data);
-                });
+                var msg = event.data;
+
+                if (msg.indexOf('login_result') == 0) {
+                    CPI.report_auth_success(msg.split(' ')[1] === 'success');
+                } else {
+                    CPI.incoming_hooks.forEach(function (hook) {
+                        hook.call(null, msg);
+                    });
+                }
             };
 
             this.ws.onclose = function () {
@@ -205,7 +223,7 @@
         WSConstructor.prototype.reconnect = function () {
             var connection = this;
             this.connect();
-            reconnect_hooks.forEach(function (hook) {
+            CPI.reconnect_hooks.forEach(function (hook) {
                 hook.call(null, connection);
             });
         };
@@ -427,7 +445,7 @@
                     }
                 };
 
-                reconnect_hooks.push(function (connection) {
+                CPI.reconnect_hooks.push(function (connection) {
                     Task.getAll(function (task) {
                         task.recover(connection);
                     });
@@ -537,14 +555,12 @@
                     return this;
                 };
 
-                Task.prototype.setFallbackEmail = function (email) {
+                Task.prototype.toggleFallback = function () {
                     if (this.isActive()) {
-                        this.fallback_email = email;
-
                         getWSConnection().send([
-                            'set_fallbak_email_for',
+                            'set_fallback_for',
                             this.key,
-                            this.fallback_email
+                            this.fallback && 'no' || 'yes'
                         ].join(' '));
                         return this;
                     }
@@ -630,6 +646,12 @@
                         function (forked_task_key) {
                             forked_task_registry[forked_task_key] = this;
                         }
+                    ],
+                    [
+                        /^fallback_enabled (yes|no)$/,
+                        function (fallback_enabled) {
+                            this.fallback = fallback_enabled === 'yes';
+                        }
                     ]
                 ];
 
@@ -653,7 +675,7 @@
                     console.log('not parsed');
                 };
 
-                incoming_hooks.push(function (msg) {
+                CPI.incoming_hooks.push(function (msg) {
                     var parts = msg.split(' '),
                         task_key = parts.shift(),
                         task = Task.getByKey(task_key);
@@ -895,12 +917,13 @@
         );
 
         app.service('CYTLogin', function () {
-            return function (email, checking_code) {
+            return function (email, checking_code, success_callback) {
                 if (email && checking_code) {
-                    auth_credentials = {
+                    CPI.auth_credentials = {
                         email: email,
                         checking_code: checking_code
                     }
+                    CPI.auth_success_callback = success_callback;
                 }
             }
         });
