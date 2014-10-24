@@ -53,8 +53,21 @@
         };
     });
 
-    app.service('Watcher', ['encodeDict', 'ANY_SEAT',
-        function (encodeDict, ANY_SEAT) {
+    app.factory('restoreDict', function () {
+        return function (str, skip_enc) {
+            var res = {};
+            angular.forEach(str.split('&'), function (s) {
+                var parts = s.split('=');
+
+                res[parts[0]] = (skip_enc && parts[1]) || decodeURIComponent(parts[1]);
+            });
+
+            return res;
+        }
+    });
+
+    app.service('Watcher', ['encodeDict', 'restoreDict', 'ANY_SEAT',
+        function (encodeDict, restoreDict, ANY_SEAT) {
             var Watcher = function (
                 train_num,
                 dep_time,
@@ -76,6 +89,8 @@
                 this.status = this.WAITING;
                 this.cars_found = null;
             };
+
+            Watcher.parseKey = restoreDict;
 
             Watcher.prototype.isGreedy = function () {
                 return this.input.seat_type === ANY_SEAT;
@@ -205,8 +220,12 @@
             this.ws.onmessage = function (event) {
                 var msg = event.data;
 
+                console.log(msg);
+
                 if (msg.indexOf('login_result') === 0) {
                     CPI.report_auth_success(msg.split(' ')[1] === 'success');
+                } else if(msg.indexOf('open_rzd_api') === 0) {
+                    //pass
                 } else {
                     CPI.incoming_hooks.forEach(function (hook) {
                         hook.call(null, msg);
@@ -428,6 +447,24 @@
 
                 };
 
+                Task.getOrCreateByKey = function (key) {
+                    var task = Task.getByKey(key), o;
+
+                    if (!task && CPI.on_task_emerge) {
+                        try {
+                            o = Task.parseKey(key);
+                        } catch (e) {
+                            console.error(e)
+                        }
+
+                        if (o) {
+                            task = CPI.on_task_emerge(o);
+                        }
+                    }
+
+                    return task;
+                };
+
                 Task.getAll = function (callback) {
                     angular.forEach(task_registry, callback);
                 };
@@ -494,7 +531,8 @@
                     seat_type,
                     car_num,
                     seat_num,
-                    seat_pos
+                    seat_pos,
+                    silently
                 ) {
                     var w;
 
@@ -513,7 +551,9 @@
 
                     if (this.watchers[w.key] === undefined) {
                         this.watchers[w.key] = w;
-                        this.pushWatcher(w);
+                        if (!silently) {
+                            this.pushWatcher(w);
+                        }
                     }
 
                     return this.watchers[w.key];
@@ -670,7 +710,23 @@
                         function (fallback_enabled) {
                             this.fallback = fallback_enabled === 'yes';
                         }
-                    ]
+                    ],
+                    [
+                        /^restore_watcher (.+)$/,
+                        function (watcher_key) {
+                            var o = Watcher.parseKey(watcher_key);
+
+                            this.addWatcher(
+                                o.train_num,
+                                o.dep_time,
+                                o.seat_type,
+                                o.car_num,
+                                o.seat_num,
+                                o.seat_pos,
+                                true
+                            );
+                        }
+                    ],
                 ];
 
                 Task.prototype.processReport = function (msg) {
@@ -696,7 +752,7 @@
                 CPI.incoming_hooks.push(function (msg) {
                     var parts = msg.split(' '),
                         task_key = parts.shift(),
-                        task = Task.getByKey(task_key);
+                        task = Task.getOrCreateByKey(task_key);
 
                     console.log('ws <= ' + msg);
 
@@ -761,17 +817,30 @@
                     };
 
                     TaskPlus.prototype.addWatcher = function (
-                        train_number, seat_type, dep_time
+                        train_num,
+                        dep_time,
+                        seat_type,
+                        car_num,
+                        seat_num,
+                        seat_pos,
+                        silently
                     ) {
                         var watcher = TaskPlus.SC.prototype.addWatcher.call(
-                            this, train_number, dep_time, seat_type
+                            this,
+                            train_num,
+                            dep_time,
+                            seat_type,
+                            car_num,
+                            seat_num,
+                            seat_pos,
+                            silently
                         ),
                         train,
-                        train_key = this.makeTrainKey(train_number, dep_time);
+                        train_key = this.makeTrainKey(train_num, dep_time);
 
                         if (this.trains[train_key] === undefined) {
                             this.trains[train_key] = {
-                                train_number: train_number,
+                                train_number: train_num,
                                 dep_time: dep_time,
                                 watchers: [],
                                 departured: false,
@@ -939,16 +1008,16 @@
             ]
         );
 
-        app.service('CYTLogin', function () {
-            return function (email, checking_code, success_callback) {
-                if (email && checking_code) {
-                    CPI.auth_credentials = {
-                        email: email,
-                        checking_code: checking_code
-                    };
-                    CPI.auth_success_callback = success_callback;
-                }
+        app.service('CPI', function () {
+            return function (key, value) {
+                CPI[key] = value;
             };
+        });
+
+        app.service('CYTConnect', function () {
+            return function () {
+                getWSConnection();
+            }
         });
     }]);
 
