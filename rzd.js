@@ -209,22 +209,22 @@
                 "ws"
             ].join(''));
 
-            if (CPI.auth_credentials) {
-                this.send([
-                    'login',
-                    CPI.auth_credentials.email,
-                    CPI.auth_credentials.checking_code
-                ].join(' '));
-            }
+            this.login();
+
 
             this.ws.onmessage = function (event) {
-                var msg = event.data;
+                var msg = event.data, res;
 
                 console.log(msg);
 
                 if (msg.indexOf('login_result') === 0) {
-                    CPI.report_auth_success(msg.split(' ')[1] === 'success');
-                } else if(msg.indexOf('open_rzd_api') === 0) {
+                    res = msg.split(' ')[1] === 'success';
+                    if (res) {
+                        this.email_logged_in = this.trying_email;
+                    }
+                    this.trying_email = null;
+                    CPI.report_auth_success(res);
+                } else if (msg.indexOf('open_rzd_api') === 0) {
                     //pass
                 } else {
                     CPI.incoming_hooks.forEach(function (hook) {
@@ -237,6 +237,19 @@
                 console.log("Connection close");
                 $window.setTimeout(reconnect, 5000);
             };
+        };
+
+        WSConstructor.prototype.login = function () {
+            if (CPI.auth_credentials &&
+                !this.trying_email &&
+                CPI.auth_credentials.email !== this.email_logged_in) {
+                this.trying_email = CPI.auth_credentials.email;
+                this.send([
+                    'login',
+                    CPI.auth_credentials.email,
+                    CPI.auth_credentials.checking_code
+                ].join(' '));
+            }
         };
 
         WSConstructor.prototype.reconnect = function () {
@@ -1016,8 +1029,8 @@
 
         app.service('CYTConnect', function () {
             return function () {
-                getWSConnection();
-            }
+                getWSConnection().login();
+            };
         });
     }]);
 
