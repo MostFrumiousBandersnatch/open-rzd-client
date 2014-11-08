@@ -167,12 +167,12 @@
                 auth_credentials: undefined,
                 auth_success: false,
                 auth_success_callback: undefined,
-                report_auth_success: function(success) {
+                report_auth_success: function (success) {
                     this.auth_success = success;
                     if (success && this.auth_success_callback) {
                         this.auth_success_callback(
                             this.auth_credentials
-                        )
+                        );
                     }
                 }
             },
@@ -192,9 +192,35 @@
             this.connect();
         }
 
-        WSConstructor.prototype.connect = function () {
-            var reconnect = this.reconnect.bind(this);
+        WSConstructor.ws_on_message = function (event) {
+            var msg = event.data, res;
 
+            console.log(msg);
+
+            if (msg.indexOf('login_result') === 0) {
+                res = msg.split(' ')[1] === 'success';
+                if (res) {
+                    this.email_logged_in = this.trying_email;
+                }
+                this.trying_email = null;
+                CPI.report_auth_success(res);
+            } else if (msg.indexOf('open_rzd_api') === 0) {
+                //pass
+            } else {
+                CPI.incoming_hooks.forEach(function (hook) {
+                    hook.call(null, msg);
+                });
+            }
+        };
+
+        WSConstructor.ws_on_close = function () {
+            console.log("Connection close");
+            this.email_logged_in = null;
+            this.trying_email = null;
+            $window.setTimeout(this.reconnect.bind(this), 5000);
+        };
+
+        WSConstructor.prototype.connect = function () {
             if (this.ws) {
                 if (this.ws.readyState === this.ws.CLOSED) {
                     delete this.ws;
@@ -211,32 +237,8 @@
 
             this.login();
 
-
-            this.ws.onmessage = function (event) {
-                var msg = event.data, res;
-
-                console.log(msg);
-
-                if (msg.indexOf('login_result') === 0) {
-                    res = msg.split(' ')[1] === 'success';
-                    if (res) {
-                        this.email_logged_in = this.trying_email;
-                    }
-                    this.trying_email = null;
-                    CPI.report_auth_success(res);
-                } else if (msg.indexOf('open_rzd_api') === 0) {
-                    //pass
-                } else {
-                    CPI.incoming_hooks.forEach(function (hook) {
-                        hook.call(null, msg);
-                    });
-                }
-            };
-
-            this.ws.onclose = function () {
-                console.log("Connection close");
-                $window.setTimeout(reconnect, 5000);
-            };
+            this.ws.onmessage = WSConstructor.ws_on_message.bind(this);
+            this.ws.onclose = WSConstructor.ws_on_close.bind(this);
         };
 
         WSConstructor.prototype.login = function () {
