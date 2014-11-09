@@ -434,6 +434,8 @@
                         errors: []
                     };
 
+                    this.fallback = false;
+
                     task_registry[key] = this;
                 };
 
@@ -497,7 +499,7 @@
                     var that = this,
                         succeeded_cnt = 0;
 
-                    if (this.isActive()) {
+                    if (this.isActive() && !this.fallback) {
                         console.log("Trying to recover " + this.key);
 
                         angular.forEach(this.watchers, function (watcher) {
@@ -591,7 +593,7 @@
                         !this.watchers[watcher.key].isSucceeded()) {
                         delete this.watchers[watcher.key];
 
-                        if (this.isActive() && watcher.isAccepted()) {
+                        if (this.isActive() && !watcher.isAccepted()) {
                             getWSConnection().send(
                                 ['unwatch', this.key, watcher.key].join(' ')
                             );
