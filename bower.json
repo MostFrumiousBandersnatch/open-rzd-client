@@ -15,10 +15,10 @@
         "angular-mocks": "~1.2.0"
     },
     "authors": [
-        "Ivan Kondratyev <ivanbright@gmail.com>",
+        "Ivan Kondratyev <ivanbright@gmail.com>"
     ],
     "repository": {
         "type": "git",
         "url": "git://github.com/MostFrumiousBandersnatch/open-rzd-client.git"
-  }
+    }
 }
