@@ -159,28 +159,36 @@
         }]
     );
 
-    config_injector.invoke(['GLOBAL_CONFIG', '$window',
-        function (GLOBAL_CONFIG, $window) {
-        var CPI = {
-                incoming_hooks: [],
-                reconnect_hooks: [],
-                auth_credentials: undefined,
-                auth_success: false,
-                auth_success_callback: undefined,
-                report_auth_success: function (success) {
-                    this.auth_success = success;
-                    if (success && this.auth_success_callback) {
-                        this.auth_success_callback(
-                            this.auth_credentials
-                        );
-                    }
-                }
-            },
-            getWSConnection = (function () {
+    config_injector.invoke(['GLOBAL_CONFIG', '$window', '$rootScope',
+        function (GLOBAL_CONFIG, $window, $rootScope) {
+        //Connection public interface
+        var
+            //CPI = {
+            //    incoming_hooks: [],
+            //    reconnect_hooks: [],
+            //    auth_credentials: undefined,
+            //    auth_success: false,
+            //    auth_success_callback: undefined,
+            //    report_auth_success: function (success) {
+            //        this.auth_success = success;
+            //        if (success && this.auth_success_callback) {
+            //            this.auth_success_callback(
+            //                this.auth_credentials
+            //            );
+            //        }
+            //    }
+            //},
+            task_registry = {},
+            forked_task_registry = {},
+            connection_state = $rootScope.$new(true),
+            getWSConnection = (function (requesting_task) {
                 var connection;
 
                 return function () {
                     if (connection === undefined) {
+                        connection_state.$apply(function (scope) {
+                            scope.task_class = requesting_task;
+                        });
                         connection = new WSConstructor();
                     }
 
@@ -188,35 +196,68 @@
                 };
             }());
 
+        connection_state.connected = false;
+        connection_state.email_logged_in = undefined;
+        connection_state.fallback_enabled = false;
+        connection_state.task_class = undefined;
+
+        connection_state.$on('disconnect', function () {
+            connection_state.email_logged_in = null;
+        });
+
         function WSConstructor() {
+            this.auth_credentials = undefined;
+            this.logging_in = false;
             this.connect();
         }
 
+        WSConstructor.ws_on_open = function () {
+            connection_state.$apply(function (scope) {
+                scope.connected = true;
+            });
+
+            angular.forEach(
+                this.preconnect_buffer,
+                this.send.bind(this)
+            );
+        };
+
         WSConstructor.ws_on_message = function (event) {
-            var msg = event.data, res;
+            var msg = event.data, res, email;
 
             console.log(msg);
 
             if (msg.indexOf('login_result') === 0) {
                 res = msg.split(' ')[1] === 'success';
+                email = this.auth_credentials.email;
+
                 if (res) {
-                    this.email_logged_in = this.trying_email;
+                    connection_state.$apply(function (scope) {
+                        scope.email_logged_in = email;
+                    });
+                } else {
+                    connection_state.$emit(
+                        'login_failed', email
+                    );
+                    this.auth_credentials = null;
                 }
-                this.trying_email = null;
-                CPI.report_auth_success(res);
+                this.logging_in = false;
+                //CPI.report_auth_success(res);
             } else if (msg.indexOf('open_rzd_api') === 0) {
                 //pass
             } else {
-                CPI.incoming_hooks.forEach(function (hook) {
-                    hook.call(null, msg);
-                });
+                connection_state.$emit('incoming_message', msg);
             }
         };
 
         WSConstructor.ws_on_close = function () {
             console.log("Connection close");
-            this.email_logged_in = null;
-            this.trying_email = null;
+
+            connection_state.$apply(function (scope) {
+                scope.connected = false;
+            });
+
+            this.logging_in = false;
             $window.setTimeout(this.reconnect.bind(this), 5000);
         };
 
@@ -229,46 +270,48 @@
                 }
             }
 
+            this.preconnect_buffer = [];
+
             this.ws = new $window.WebSocket(["ws://",
                 GLOBAL_CONFIG.api_host,
                 GLOBAL_CONFIG.api_prefix,
                 "ws"
             ].join(''));
 
-            this.login();
-
+            this.ws.onopen = WSConstructor.ws_on_open.bind(this);
             this.ws.onmessage = WSConstructor.ws_on_message.bind(this);
             this.ws.onclose = WSConstructor.ws_on_close.bind(this);
+
+            this.login();
         };
 
         WSConstructor.prototype.login = function () {
-            if (CPI.auth_credentials &&
-                !this.trying_email &&
-                CPI.auth_credentials.email !== this.email_logged_in) {
-                this.trying_email = CPI.auth_credentials.email;
+            if (this.auth_credentials &&
+                !connection_state.email_logged_in &&
+                !this.logging_in) {
+                this.logging_in = true;
+
                 this.send([
                     'login',
-                    CPI.auth_credentials.email,
-                    CPI.auth_credentials.checking_code
+                    this.auth_credentials.email,
+                    this.auth_credentials.checking_code
                 ].join(' '));
             }
         };
 
         WSConstructor.prototype.reconnect = function () {
-            var connection = this;
             this.connect();
-            CPI.reconnect_hooks.forEach(function (hook) {
-                hook.call(null, connection);
-            });
+            connection_state.$emit('reconnect', this);
+            //CPI.reconnect_hooks.forEach(function (hook) {
+            //    hook.call(null, connection);
+            //});
         };
 
         WSConstructor.prototype.send = function (msg) {
             console.log('ws => ' + msg);
 
             if (this.ws.readyState === this.ws.CONNECTING) {
-                this.ws.addEventListener('open', function () {
-                    this.send(msg);
-                });
+                this.preconnect_buffer.push(msg);
             } else if (this.ws.readyState === this.ws.OPEN) {
                 this.ws.send(msg);
             } else {
@@ -388,11 +431,7 @@
             'ANY_SEAT',
 
             function ($window, Watcher, ANY_SEAT) {
-                var task_registry = {},
-                    forked_task_registry = {},
-                    Task;
-
-                Task = function (
+                var Task = function (
                     from,
                     to,
                     date,
@@ -433,8 +472,7 @@
                         trains_found: [],
                         errors: []
                     };
-
-                    this.fallback = false;
+                    this.confirmed = false;
 
                     task_registry[key] = this;
                 };
@@ -460,23 +498,27 @@
                         to: parts[2],
                         date: parts[3]
                     };
-
-
                 };
 
                 Task.getOrCreateByKey = function (key) {
                     var task = Task.getByKey(key), o;
 
-                    if (!task && CPI.on_task_emerge) {
+                    if (!task) {
                         try {
                             o = Task.parseKey(key);
                         } catch (e) {
-                            console.error(e)
+                            console.error(e);
                         }
 
                         if (o) {
-                            task = CPI.on_task_emerge(o);
+                            task = new connection_state.task_class(
+                                o.from, o.to, o.date
+                            );
+
+                            connection_state.$emit('task_emerge', task);
                         }
+                    } else if (!task.confirmed) {
+                        connection_state.$emit('task_emerge', task);
                     }
 
                     return task;
@@ -499,7 +541,7 @@
                     var that = this,
                         succeeded_cnt = 0;
 
-                    if (this.isActive() && !this.fallback) {
+                    if (this.isActive()) {
                         console.log("Trying to recover " + this.key);
 
                         angular.forEach(this.watchers, function (watcher) {
@@ -516,7 +558,9 @@
                     }
                 };
 
-                CPI.reconnect_hooks.push(function (connection) {
+                connection_state.$on('reconnect', function (event) {
+                    var connection = getWSConnection();
+
                     Task.getAll(function (task) {
                         task.recover(connection);
                     });
@@ -629,17 +673,6 @@
                     return this;
                 };
 
-                Task.prototype.toggleFallback = function () {
-                    if (this.isActive()) {
-                        getWSConnection().send([
-                            'set_fallback_for',
-                            this.key,
-                            this.fallback && 'no' || 'yes'
-                        ].join(' '));
-                        return this;
-                    }
-                };
-
                 Task.prototype.GRAMMAR = [
                     [
                         /^(\d)(\.|\-)(?:\s(.+))?$/,
@@ -743,11 +776,13 @@
                                 true
                             );
                         }
-                    ],
+                    ]
                 ];
 
                 Task.prototype.processReport = function (msg) {
                     var re, callback, i, l, res;
+
+                    this.confirmed = true;
 
                     for (i = 0, l = this.GRAMMAR.length; i < l; i += 1) {
                         re = this.GRAMMAR[i][0];
@@ -766,7 +801,7 @@
                     console.log('not parsed');
                 };
 
-                CPI.incoming_hooks.push(function (msg) {
+                connection_state.$on('incoming_message', function (event, msg) {
                     var parts = msg.split(' '),
                         task_key = parts.shift(),
                         task = Task.getOrCreateByKey(task_key);
@@ -777,6 +812,7 @@
                         task.processReport(parts.join(' '));
                     }
                 });
+                //CPI.incoming_hooks.push();
 
                 return Task;
             }
@@ -1025,15 +1061,28 @@
             ]
         );
 
-        app.service('CPI', function () {
-            return function (key, value) {
-                CPI[key] = value;
+
+        app.service('watchWSState', function () {
+            return function (expr, callback) {
+                connection_state.$watch(expr, callback);
+            };
+        });
+
+        app.service('listenToWS', function () {
+            return function (event_name, callback) {
+                connection_state.$on(event_name, callback);
             };
         });
 
         app.service('CYTConnect', function () {
-            return function () {
-                getWSConnection().login();
+            return function (email, checking_code) {
+                var conn = getWSConnection();
+
+                conn.auth_credentials = {
+                    email: email,
+                    checking_code: checking_code
+                };
+                conn.login();
             };
         });
     }]);
