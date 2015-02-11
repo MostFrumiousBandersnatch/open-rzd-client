@@ -2,7 +2,7 @@
  * Client to interact with open RZD API.
  */
 
-(function (angular) {
+(function (angular, console) {
     'use strict';
 
     var app = angular.module('rzd', ['ngResource']),
@@ -63,7 +63,7 @@
             });
 
             return res;
-        }
+        };
     });
 
     app.service('Watcher', ['encodeDict', 'restoreDict', 'ANY_SEAT',
@@ -161,26 +161,11 @@
 
     config_injector.invoke(['GLOBAL_CONFIG', '$window', '$rootScope',
         function (GLOBAL_CONFIG, $window, $rootScope) {
-        //Connection public interface
-        var
-            //CPI = {
-            //    incoming_hooks: [],
-            //    reconnect_hooks: [],
-            //    auth_credentials: undefined,
-            //    auth_success: false,
-            //    auth_success_callback: undefined,
-            //    report_auth_success: function (success) {
-            //        this.auth_success = success;
-            //        if (success && this.auth_success_callback) {
-            //            this.auth_success_callback(
-            //                this.auth_credentials
-            //            );
-            //        }
-            //    }
-            //},
-            task_registry = {},
+
+        var task_registry = {},
             forked_task_registry = {},
             connection_state = $rootScope.$new(true),
+            directions,
             getWSConnection = (function (requesting_task) {
                 var connection;
 
@@ -302,9 +287,6 @@
         WSConstructor.prototype.reconnect = function () {
             this.connect();
             connection_state.$emit('reconnect', this);
-            //CPI.reconnect_hooks.forEach(function (hook) {
-            //    hook.call(null, connection);
-            //});
         };
 
         WSConstructor.prototype.send = function (msg) {
@@ -333,11 +315,26 @@
 
         app.factory('TrackedStationsLookup', ['$resource',
             function ($resource) {
-                return $resource(["http://",
-                    GLOBAL_CONFIG.api_host,
-                    GLOBAL_CONFIG.api_prefix,
+                return $resource(
+                    ["http://",
+                        GLOBAL_CONFIG.api_host,
+                        GLOBAL_CONFIG.api_prefix,
                     "fully_tracked"
-                ].join(''));
+                    ].join(''),
+                    {},
+                    {
+                        get: {
+                            method: "GET",
+                            responseType: "json",
+                            interceptor: {
+                                response: function (response) {
+                                    directions = response.data;
+                                    return response.data;
+                                }
+                            }
+                        }
+                    }
+                );
             }]
         );
 
@@ -435,8 +432,6 @@
                     from,
                     to,
                     date,
-                    s_from,
-                    s_to,
                     error_proof,
                     limited
                 ) {
@@ -454,8 +449,11 @@
                     };
                     this.key = key;
 
-                    this.from = s_from;
-                    this.to = s_to;
+                    if (directions) {
+                        this.from = directions.map[from];
+                        this.to = directions.map[to];
+                    }
+
 
                     this.error_proof = error_proof || false;
 
@@ -806,8 +804,6 @@
                         task_key = parts.shift(),
                         task = Task.getOrCreateByKey(task_key);
 
-                    console.log('ws <= ' + msg);
-
                     if (task) {
                         task.processReport(parts.join(' '));
                     }
@@ -828,11 +824,10 @@
                 function (TrackingTask, ANY_SEAT) {
                     var Noop = angular.noop,
                         TaskPlus = function (
-                            from, to, date, s_from, s_to, error_proof, limited
+                            from, to, date, error_proof, limited
                         ) {
                             var instance = TaskPlus.superclass.call(
-                                this, from, to, date, s_from, s_to, error_proof,
-                                limited
+                                this, from, to, date, error_proof, limited
                             );
 
                             if (instance) {
@@ -1088,4 +1083,4 @@
     }]);
 
     return app;
-}(angular));
+}(angular, console));
