@@ -227,8 +227,11 @@
                     this.auth_credentials = null;
                 }
                 this.logging_in = false;
-                //CPI.report_auth_success(res);
-            } else if (msg.indexOf('open_rzd_api') === 0) {
+            } else if (msg.indexOf('fallback_enabled') === 0) {
+                connection_state.$apply(function (scope) {
+                    scope.fallback_enabled = msg.split(' ')[1] === 'yes';
+                });
+            }else if (msg.indexOf('open_rzd_api') === 0) {
                 //pass
             } else {
                 connection_state.$emit('incoming_message', msg);
@@ -487,7 +490,7 @@
                     var parts = key.split(',');
 
                     if (parts.length !== 4) {
-                        throw new Error('wrong task key');
+                        throw new Error('wrong task key: ' + key);
                     }
 
                     return {
@@ -754,12 +757,6 @@
                         }
                     ],
                     [
-                        /^fallback_enabled (yes|no)$/,
-                        function (fallback_enabled) {
-                            this.fallback = fallback_enabled === 'yes';
-                        }
-                    ],
-                    [
                         /^restore_watcher (.+)$/,
                         function (watcher_key) {
                             var o = Watcher.parseKey(watcher_key);
@@ -808,7 +805,6 @@
                         task.processReport(parts.join(' '));
                     }
                 });
-                //CPI.incoming_hooks.push();
 
                 return Task;
             }
@@ -1078,6 +1074,20 @@
                     checking_code: checking_code
                 };
                 conn.login();
+            };
+        });
+
+        app.service('CYTToggleFallback', function () {
+            return function (email, checking_code) {
+                var conn;
+
+                if (connection_state.email_logged_in) {
+                    conn = getWSConnection();
+                    conn.send([
+                        'fallback',
+                        connection_state.fallback_enabled ? 'disable' : 'enable'
+                    ].join(' '));
+                }
             };
         });
     }]);
