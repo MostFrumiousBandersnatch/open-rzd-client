@@ -166,14 +166,11 @@
             forked_task_registry = {},
             connection_state = $rootScope.$new(true),
             directions,
-            getWSConnection = (function (requesting_task) {
+            getWSConnection = (function () {
                 var connection;
 
                 return function () {
                     if (connection === undefined) {
-                        connection_state.$apply(function (scope) {
-                            scope.task_class = requesting_task;
-                        });
                         connection = new WSConstructor();
                     }
 
@@ -247,6 +244,14 @@
 
             this.logging_in = false;
             $window.setTimeout(this.reconnect.bind(this), 5000);
+        };
+
+        WSConstructor.prototype.drop = function () {
+            if (this.ws) {
+                if (this.ws.readyState === this.ws.OPEN) {
+                    this.ws.close();
+                }
+            }
         };
 
         WSConstructor.prototype.connect = function () {
@@ -511,7 +516,7 @@
                             console.error(e);
                         }
 
-                        if (o) {
+                        if (o && connection_state.task_class) {
                             task = new connection_state.task_class(
                                 o.from, o.to, o.date
                             );
@@ -698,8 +703,24 @@
                         }
                     ],
                     [
-                        /^\+W|\-W|stopped|has been scheduled/,
+                        /^-W|stopped|has been scheduled/,
                         angular.noop
+                    ],
+                    [
+                        /^\+W\:(.+)$/,
+                        function (watcher_key) {
+                            var o = Watcher.parseKey(watcher_key);
+
+                            this.addWatcher(
+                                o.train_num,
+                                o.dep_time,
+                                o.seat_type,
+                                o.car_num,
+                                o.seat_num,
+                                o.seat_pos,
+                                true
+                            );
+                        }
                     ],
                     [
                         /^found (.+)$/,
@@ -754,22 +775,6 @@
                         /^fork (.+)$/,
                         function (forked_task_key) {
                             forked_task_registry[forked_task_key] = this;
-                        }
-                    ],
-                    [
-                        /^restore_watcher (.+)$/,
-                        function (watcher_key) {
-                            var o = Watcher.parseKey(watcher_key);
-
-                            this.addWatcher(
-                                o.train_num,
-                                o.dep_time,
-                                o.seat_type,
-                                o.car_num,
-                                o.seat_num,
-                                o.seat_pos,
-                                true
-                            );
                         }
                     ]
                 ];
@@ -835,7 +840,6 @@
 
                     Noop.prototype = TrackingTask.prototype;
                     TaskPlus.prototype = new Noop();
-                    TaskPlus.prototype.constructor = TaskPlus;
                     TaskPlus.superclass = TrackingTask;
                     TaskPlus.SC = TaskPlus.superclass;
 
@@ -1066,14 +1070,25 @@
         });
 
         app.service('CYTConnect', function () {
-            return function (email, checking_code) {
+            return function (email, checking_code, task_class) {
                 var conn = getWSConnection();
 
                 conn.auth_credentials = {
                     email: email,
                     checking_code: checking_code
                 };
-                conn.login();
+
+                if (task_class) {
+                    connection_state.$apply(function (scope) {
+                        scope.task_class = task_class;
+                    });
+                }
+
+                if (!connection_state.connected) {
+                    conn.login();
+                } else {
+                    conn.drop();
+                }
             };
         });
 
