@@ -92,6 +92,22 @@
 
             Watcher.parseKey = restoreDict;
 
+            Watcher.fromKey = function (w_key) {
+                var o = Watcher.parseKey(w_key);
+
+                if (o) {
+                    return new Watcher(
+                        o.train_num,
+                        o.dep_time,
+                        o.seat_type,
+                        o.car_num,
+                        o.seat_num,
+                        o.seat_pos
+                    );
+                }
+            };
+
+
             Watcher.prototype.isGreedy = function () {
                 return this.input.seat_type === ANY_SEAT;
             };
@@ -598,8 +614,7 @@
                     seat_type,
                     car_num,
                     seat_num,
-                    seat_pos,
-                    silently
+                    seat_pos
                 ) {
                     var w;
 
@@ -617,13 +632,15 @@
                     );
 
                     if (this.watchers[w.key] === undefined) {
-                        this.watchers[w.key] = w;
-                        if (!silently) {
-                            this.pushWatcher(w);
-                        }
+                        this.pushWatcher(w);
                     }
+                };
 
-                    return this.watchers[w.key];
+                Task.prototype.acceptWatcher = function (w) {
+                    if (this.watchers[w.key] === undefined) {
+                        this.watchers[w.key] = w;
+                        return w;
+                    }
                 };
 
                 Task.prototype.pushWatcher = function (w, connection) {
@@ -709,17 +726,7 @@
                     [
                         /^\+W\:(.+)$/,
                         function (watcher_key) {
-                            var o = Watcher.parseKey(watcher_key);
-
-                            this.addWatcher(
-                                o.train_num,
-                                o.dep_time,
-                                o.seat_type,
-                                o.car_num,
-                                o.seat_num,
-                                o.seat_pos,
-                                true
-                            );
+                            this.acceptWatcher(Watcher.fromKey(watcher_key));
                         }
                     ],
                     [
@@ -864,42 +871,33 @@
                         );
                     };
 
-                    TaskPlus.prototype.addWatcher = function (
-                        train_num,
-                        dep_time,
-                        seat_type,
-                        car_num,
-                        seat_num,
-                        seat_pos,
-                        silently
-                    ) {
-                        var watcher = TaskPlus.SC.prototype.addWatcher.call(
-                            this,
-                            train_num,
-                            dep_time,
-                            seat_type,
-                            car_num,
-                            seat_num,
-                            seat_pos,
-                            silently
-                        ),
-                        train,
-                        train_key = this.makeTrainKey(train_num, dep_time);
+                    TaskPlus.prototype.acceptWatcher = function (watcher) {
+                    var train, train_key;
 
-                        if (this.trains[train_key] === undefined) {
-                            this.trains[train_key] = {
-                                train_number: train_num,
-                                dep_time: dep_time,
-                                watchers: [],
-                                departured: false,
-                                omni: false
-                            };
+                        watcher = TaskPlus.SC.prototype.acceptWatcher.call(
+                            this, watcher
+                        );
+
+                        if (watcher) {
+                            train_key = this.makeTrainKey(
+                                watcher.input.train_num, watcher.input.dep_time
+                            );
+
+                            if (this.trains[train_key] === undefined) {
+                                this.trains[train_key] = {
+                                    train_number: watcher.input.train_num,
+                                    dep_time: watcher.input.dep_time,
+                                    watchers: [],
+                                    departured: false,
+                                    omni: false
+                                };
+                            }
+
+                            train = this.trains[train_key];
+                            watcher.train_key = train_key;
+
+                            train.watchers.push(watcher);
                         }
-
-                        train = this.trains[train_key];
-                        watcher.train_key = train_key;
-
-                        train.watchers.push(watcher);
 
                         return watcher;
                     };
