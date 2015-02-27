@@ -303,7 +303,8 @@
                 this.send([
                     'login',
                     this.auth_credentials.email,
-                    this.auth_credentials.checking_code
+                    this.auth_credentials.client_name,
+                    this.c.checking_code
                 ].join(' '));
             }
         };
@@ -1068,12 +1069,13 @@
         });
 
         app.service('CYTConnect', function () {
-            return function (email, checking_code, task_class) {
+            return function (email, client_name, checking_code, task_class) {
                 var conn = getWSConnection();
 
                 conn.auth_credentials = {
                     email: email,
-                    checking_code: checking_code
+                    checking_code: checking_code,
+                    client_name: client_name
                 };
 
                 if (task_class) {
