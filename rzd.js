@@ -304,7 +304,7 @@
                     'login',
                     this.auth_credentials.email,
                     this.auth_credentials.client_name,
-                    this.c.checking_code
+                    this.auth_credentials.checking_code
                 ].join(' '));
             }
         };
