@@ -1079,9 +1079,7 @@
                 };
 
                 if (task_class) {
-                    connection_state.$apply(function (scope) {
-                        scope.task_class = task_class;
-                    });
+                    connection_state.task_class = task_class;
                 }
 
                 if (!connection_state.connected) {
