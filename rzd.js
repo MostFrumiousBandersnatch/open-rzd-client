@@ -256,6 +256,7 @@
 
             connection_state.$apply(function (scope) {
                 scope.connected = false;
+                scope.email_logged_in = undefined;
             });
 
             this.logging_in = false;
