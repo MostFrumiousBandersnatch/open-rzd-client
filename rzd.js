@@ -112,6 +112,13 @@
                 return this.input.seat_type === ANY_SEAT;
             };
 
+            Watcher.prototype.isDetailed = function () {
+                return (
+                    !this.isGreedy() &&
+                    (this.input.seat_pos || this.input.car_num)
+                );
+            };
+
             Watcher.prototype.WAITING = 0;
             Watcher.prototype.SUCCEEDED = 1;
             Watcher.prototype.ACCEPTED = 2;
@@ -874,7 +881,7 @@
                     };
 
                     TaskPlus.prototype.acceptWatcher = function (watcher) {
-                    var train, train_key;
+                        var train, train_key;
 
                         watcher = TaskPlus.SC.prototype.acceptWatcher.call(
                             this, watcher
