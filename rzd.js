@@ -22,6 +22,16 @@
    );
 
     app.value(
+        'SEAT_POS_EXPL',
+        {
+            'Нижние': 'dn',
+            'Верхние': 'up',
+            'Нижние боковые': 'ldn',
+            'Верхние боковые': 'lup'
+        }
+    );
+
+    app.value(
         'ANY_SEAT',
         'any_seat'
     );
@@ -664,19 +674,20 @@
                     connection.send(args.join(' '));
                 };
 
+                Task.prototype.acceptWatcherRemoval = function (w_key) {
+                    if (this.watchers[w_key] === undefined) {
+                        delete this.watchers[w_key];
+                    }
+                };
+
                 Task.prototype.removeWatcher = function (watcher) {
                     if (this.watchers[watcher.key] !== undefined &&
                         !this.watchers[watcher.key].isSucceeded()) {
-                        delete this.watchers[watcher.key];
 
                         if (this.isActive() && !watcher.isAccepted()) {
                             getWSConnection().send(
                                 ['unwatch', this.key, watcher.key].join(' ')
                             );
-                        }
-
-                        if (Object.keys(this.watchers).length === 0) {
-                            this.stop();
                         }
                     }
                 };
@@ -699,10 +710,19 @@
                 };
 
                 Task.prototype.stop = function () {
-                    this.state.status = this.STOPPED;
-                    getWSConnection().send(['remove', this.key].join(' '));
-                    delete task_registry[this.key];
+                    if (this.isActive()) {
+                        getWSConnection().send(['remove', this.key].join(' '));
+                    } else {
+                        this.acceptStop();
+                    }
+
                     return this;
+                };
+
+                Task.prototype.acceptStop = function () {
+                    this.state.status = this.STOPPED;
+                    delete task_registry[this.key];
+                    connection_state.$emit('task_removed', this);
                 };
 
                 Task.prototype.GRAMMAR = [
@@ -733,10 +753,18 @@
                         angular.noop
                     ],
                     [
+                        /^\-W\:(.+)$/,
+                        Task.prototype.acceptWatcherRemoval
+                    ],
+                    [
                         /^\+W\:(.+)$/,
                         function (watcher_key) {
                             this.acceptWatcher(Watcher.fromKey(watcher_key));
                         }
+                    ],
+                    [
+                        /^removed$/,
+                        Task.prototype.acceptStop
                     ],
                     [
                         /^found (.+)$/,
