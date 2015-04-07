@@ -6,7 +6,19 @@
     'use strict';
 
     var app = angular.module('rzd', ['ngResource']),
-        config_injector = angular.injector(['ng', 'rzd_client_config']);
+        config_injector = angular.injector(['ng', 'rzd_client_config']),
+        _slice_ = Array.prototype.slice;
+
+
+    function _ext_ (heir, ancestor) {
+        var Noop = angular.noop;
+
+        Noop.prototype = ancestor.prototype;
+        heir.prototype = new Noop();
+        heir.superclass = ancestor;
+        heir.SC = heir.superclass;
+    }
+
 
     app.value(
         'SEAT_TYPES',
@@ -196,7 +208,6 @@
         function (GLOBAL_CONFIG, $window, $rootScope) {
 
         var task_registry = {},
-            forked_task_registry = {},
             connection_state = $rootScope.$new(true),
             directions,
             getWSConnection = (function () {
@@ -214,7 +225,6 @@
         connection_state.connected = false;
         connection_state.email_logged_in = undefined;
         connection_state.fallback_enabled = false;
-        connection_state.task_class = undefined;
 
         connection_state.$on('disconnect', function () {
             connection_state.email_logged_in = null;
@@ -471,15 +481,16 @@
             'ANY_SEAT',
 
             function ($window, Watcher, ANY_SEAT) {
-                var Task = function (
-                    from,
-                    to,
-                    date,
-                    error_proof,
-                    limited
-                ) {
-                    var key = Task.makeKey(from, to, date),
-                        instance = Task.getByKey(key);
+                var LIST = 'list',
+                    DETAILS = 'details',
+                    TaskInterface,
+                    AbstractTask,
+                    ListTask,
+                    DetailsTask;
+
+               AbstractTask = function (from, to, date) {
+                    var key = this.makeKey(_slice_.call(arguments)),
+                        instance = TaskInterface.getByKey(key);
 
                     if (instance) {
                         return instance;
@@ -497,11 +508,10 @@
                         this.to = directions.map[to];
                     }
 
-
-                    this.error_proof = error_proof || false;
+                    this.error_proof = true;
+                    this.limited = !directions.to[from] || directions.to[from].indexOf(to) == -1;
 
                     this.watchers = {};
-                    this.limited = Boolean(limited);
 
                     this.state = {
                         attempts_done: 0,
@@ -518,67 +528,20 @@
                     task_registry[key] = this;
                 };
 
-                Task.makeKey = function (from, to, date) {
-                    return [this.prototype.TYPE, from, to, date].join(',');
-                };
-
-                Task.getByKey = function (key) {
-                    return task_registry[key] || forked_task_registry[key];
-                };
-
-                Task.parseKey = function (key) {
-                    var parts = key.split(',');
-
-                    if (parts.length !== 4) {
-                        throw new Error('wrong task key: ' + key);
-                    }
-
-                    return {
-                        type: parts[0],
-                        from: parts[1],
-                        to: parts[2],
-                        date: parts[3]
-                    };
-                };
-
-                Task.getOrCreateByKey = function (key) {
-                    var task = Task.getByKey(key), o;
-
-                    if (!task) {
-                        try {
-                            o = Task.parseKey(key);
-                        } catch (e) {
-                            console.error(e);
-                        }
-
-                        if (o && connection_state.task_class) {
-                            task = new connection_state.task_class(
-                                o.from, o.to, o.date
-                            );
-
-                            connection_state.$emit('task_emerge', task);
-                        }
-                    } else if (!task.confirmed) {
-                        connection_state.$emit('task_emerge', task);
-                    }
-
-                    return task;
-                };
-
-                Task.getAll = function (callback) {
-                    angular.forEach(task_registry, callback);
-                };
-
-                Task.prototype = {
+                AbstractTask.prototype = {
                     IN_PROGRESS: 0,
                     FAILURE: 2,
                     STOPPED: 4,
                     FATAL_FAILURE: 6,
                     TRACKING_ERRORS_LIMIT: 5,
-                    TYPE: 'list'
+                    type: undefined
                 };
 
-                Task.prototype.recover = function (connection) {
+                AbstractTask.prototype.makeKey = function(args) {
+                    return TaskInterface.makeKey(this.type, args);
+                };
+
+                AbstractTask.prototype.recover = function (connection) {
                     var that = this,
                         succeeded_cnt = 0;
 
@@ -599,16 +562,9 @@
                     }
                 };
 
-                connection_state.$on('reconnect', function (event) {
-                    var connection = getWSConnection();
-
-                    Task.getAll(function (task) {
-                        task.recover(connection);
-                    });
-                });
-
-                Task.prototype.restart = function () {
+                AbstractTask.prototype.restart = function () {
                     this.state.status = this.IN_PROGRESS;
+
                     angular.forEach(
                         this.watchers,
                         function (watcher) {
@@ -618,7 +574,7 @@
                     this.recover();
                 };
 
-                Task.prototype.restartWatcher = function (watcher) {
+                AbstractTask.prototype.restartWatcher = function (watcher) {
                     if (this.watchers[watcher.key] !== undefined) {
                         if (watcher.restart(this.isFailed())) {
                             this.pushWatcher(watcher);
@@ -627,7 +583,7 @@
                 };
 
 
-                Task.prototype.addWatcher = function (
+                AbstractTask.prototype.addWatcher = function (
                     train_num,
                     dep_time,
                     seat_type,
@@ -637,7 +593,7 @@
                 ) {
                     var w;
 
-                    if (this.limited  && seat_type !== ANY_SEAT) {
+                    if (this.limited && seat_type !== ANY_SEAT) {
                         throw 'Inapproperiate watcher';
                     }
 
@@ -655,14 +611,14 @@
                     }
                 };
 
-                Task.prototype.acceptWatcher = function (w) {
+                AbstractTask.prototype.acceptWatcher = function (w) {
                     if (this.watchers[w.key] === undefined) {
                         this.watchers[w.key] = w;
                         return w;
                     }
                 };
 
-                Task.prototype.pushWatcher = function (w, connection) {
+                AbstractTask.prototype.pushWatcher = function (w, connection) {
                     var args = ['watch', this.key, w.key];
 
                     if (this.error_proof) {
@@ -674,13 +630,13 @@
                     connection.send(args.join(' '));
                 };
 
-                Task.prototype.acceptWatcherRemoval = function (w_key) {
+                AbstractTask.prototype.acceptWatcherRemoval = function (w_key) {
                     if (this.watchers[w_key] === undefined) {
                         delete this.watchers[w_key];
                     }
                 };
 
-                Task.prototype.removeWatcher = function (watcher) {
+                AbstractTask.prototype.removeWatcher = function (watcher) {
                     if (this.watchers[watcher.key] !== undefined &&
                         !this.watchers[watcher.key].isSucceeded()) {
 
@@ -692,24 +648,24 @@
                     }
                 };
 
-                Task.prototype.isFailed = function () {
+                AbstractTask.prototype.isFailed = function () {
                     return (this.state.status === this.FAILURE) ||
                             (this.state.status === this.FATAL_FAILURE);
                 };
 
-                Task.prototype.isRecoverable = function () {
+                AbstractTask.prototype.isRecoverable = function () {
                     return this.state.status === this.FAILURE;
                 };
 
-                Task.prototype.isStopped = function () {
+                AbstractTask.prototype.isStopped = function () {
                     return this.state.status === this.STOPPED;
                 };
 
-                Task.prototype.isActive = function () {
+                AbstractTask.prototype.isActive = function () {
                     return this.state.status === this.IN_PROGRESS;
                 };
 
-                Task.prototype.stop = function () {
+                AbstractTask.prototype.stop = function () {
                     if (this.isActive()) {
                         getWSConnection().send(['remove', this.key].join(' '));
                     } else {
@@ -719,13 +675,13 @@
                     return this;
                 };
 
-                Task.prototype.acceptStop = function () {
+                AbstractTask.prototype.acceptStop = function () {
                     this.state.status = this.STOPPED;
                     delete task_registry[this.key];
                     connection_state.$emit('task_removed', this);
                 };
 
-                Task.prototype.GRAMMAR = [
+                AbstractTask.prototype.GRAMMAR = [
                     [
                         /^(\d)(\.|\-)(?:\s(.+))?$/,
                         function (status, prefix, error_json) {
@@ -754,7 +710,7 @@
                     ],
                     [
                         /^\-W\:(.+)$/,
-                        Task.prototype.acceptWatcherRemoval
+                        AbstractTask.prototype.acceptWatcherRemoval
                     ],
                     [
                         /^\+W\:(.+)$/,
@@ -764,7 +720,7 @@
                     ],
                     [
                         /^removed$/,
-                        Task.prototype.acceptStop
+                        AbstractTask.prototype.acceptStop
                     ],
                     [
                         /^found (.+)$/,
@@ -823,7 +779,7 @@
                     ]
                 ];
 
-                Task.prototype.processReport = function (msg) {
+                AbstractTask.prototype.processReport = function (msg) {
                     var re, callback, i, l, res;
 
                     this.confirmed = true;
@@ -837,7 +793,7 @@
                             callback.apply(this, res.splice(1));
 
                             if (this.onUpdate) {
-                                this.onUpdate();
+                                //this.onUpdate();
                             }
                             return;
                         }
@@ -845,252 +801,361 @@
                     console.log('not parsed');
                 };
 
+                ListTask = function (from, to, date) {
+                    var instance = ListTask.superclass.call(
+                        this, from, to, date
+                    );
+
+                    if (instance) {
+                        return instance;
+                    }
+
+                    this.trains = {};
+                };
+
+                _ext_(ListTask, AbstractTask);
+
+                ListTask.prototype.type = LIST;
+
+                ListTask.generateTrainKey = function (
+                    train_number, dep_date, dep_time
+                ) {
+                    return [dep_date, dep_time, train_number].join('_');
+                };
+
+                ListTask.prototype.makeTrainKey = function (
+                    train_number, dep_time
+                ) {
+                    return ListTask.generateTrainKey(
+                        train_number, this.input.date, dep_time
+                    );
+                };
+
+                ListTask.prototype.acceptWatcher = function (watcher) {
+                    var train, train_key;
+
+                    watcher = ListTask.SC.prototype.acceptWatcher.call(
+                        this, watcher
+                    );
+
+                    if (watcher) {
+                        train_key = this.makeTrainKey(
+                            watcher.input.train_num, watcher.input.dep_time
+                        );
+
+                        if (this.trains[train_key] === undefined) {
+                            this.trains[train_key] = {
+                                train_number: watcher.input.train_num,
+                                dep_time: watcher.input.dep_time,
+                                watchers: [],
+                                departured: false,
+                                omni: false
+                            };
+                        }
+
+                        train = this.trains[train_key];
+                        watcher.train_key = train_key;
+
+                        train.watchers.push(watcher);
+                    }
+
+                    return watcher;
+                };
+
+                ListTask.prototype.onDeparture = function (data) {
+                    angular.forEach(
+                        data,
+                        function (dep_time, train_number) {
+                            var train_key = this.makeTrainKey(
+                                train_number, dep_time
+                            );
+
+                            if (this.trains[train_key]) {
+                                this.trains[train_key].departured = true;
+                            } else {
+                                console.warn(train_key);
+                            }
+                        }.bind(this)
+                    );
+                };
+
+                ListTask.prototype.removeWatcher = function (watcher) {
+                    var train = this.trains[watcher.train_key],
+                        train_index = train.watchers.indexOf(watcher),
+                        result = ListTask.SC.prototype.removeWatcher.call(
+                            this, watcher
+                        );
+
+                    if (train_index !== -1) {
+                        train.watchers.splice(train_index, 1);
+                    }
+
+                    if (train.watchers.length === 0) {
+                        delete this.trains[watcher.train_key];
+                    }
+
+                    return result;
+                };
+
+                ListTask.prototype.removeTrainByKey = function (train_key) {
+                    if (this.trains[train_key]) {
+                        angular.forEach(
+                            this.trains[train_key].watchers,
+                            ListTask.SC.prototype.removeWatcher.bind(this)
+                        );
+                    }
+
+                    delete this.trains[train_key];
+                };
+
+                ListTask.prototype.askForDetails = function (
+                    train_number, dep_time
+                ) {
+                    var train_key = this.makeTrainKey(
+                            train_number, dep_time
+                        );
+
+                    angular.forEach(
+                        this.trains[train_key].watchers,
+                        function (watcher) {
+                            watcher.accept();
+                        }
+                    );
+
+                    if (this.trains[train_key]) {
+                        getWSConnection().send(
+                            [
+                                'get_details',
+                                this.key,
+                                train_number,
+                                dep_time
+                            ].join(' ')
+                        );
+                        this.waiting_for_details = true;
+                    } else {
+                        console.warn(train_key);
+                    }
+                };
+
+                ListTask.prototype.getTrainsCount = function () {
+                    return Object.keys(this.trains).length;
+                };
+
+                ListTask.prototype.GRAMMAR.push(
+                    [
+                        /^details (.+)$/,
+                        function (json_str) {
+                            var data = JSON.parse(json_str),
+                                train_number = data.info.number,
+                                dep_time = data.info.time0,
+                                train_key = this.makeTrainKey(
+                                    train_number, dep_time
+                                );
+
+                            this.waiting_for_details = false;
+
+                            if (this.onTrainDetails) {
+                                this.onTrainDetails(train_key, data);
+                            }
+                        }
+                    ],
+                    [
+                        /^vanished (\S+) (\d{2}:\d{2})$/,
+                        function (train_number, dep_time) {
+                            var train_key = this.makeTrainKey(
+                                    train_number, dep_time
+                                );
+
+                            this.waiting_for_details = false;
+
+                            angular.forEach(
+                                this.trains[train_key].watchers,
+                                function (watcher) {
+                                    if (watcher.isAccepted()) {
+                                        watcher.restart();
+                                    }
+                                }
+                            );
+                        }
+                    ],
+                    [
+                        /^dep (.+)$/,
+                        function (json_str) {
+                            var data = JSON.parse(json_str);
+
+                            angular.forEach(
+                                data,
+                                function (dep_time, train_number) {
+                                    var train_key = this.makeTrainKey(
+                                        train_number, dep_time
+                                    );
+
+                                    if (this.trains[train_key]) {
+                                        this.trains[
+                                            train_key
+                                        ].departured = true;
+
+                                        if (this.onTrainDeparture) {
+                                            this.onTrainDeparture(
+                                                train_key
+                                            );
+                                        }
+                                    } else {
+                                        console.warn(train_key);
+                                    }
+                                }.bind(this)
+                            );
+                        }
+                    ]
+                );
+
+                DetailsTask = function (from, to, date, train, time) {
+                    var instance = ListTask.superclass.call(
+                        this, from, to, date, train, time
+                    );
+
+                    if (instance) {
+                        return instance;
+                    }
+
+                    this.train = train;
+                    this.dept_time = time;
+                    this.list_key = TaskInterface.makeKey(LIST, [from, to, date]);
+                };
+
+                _ext_(DetailsTask, AbstractTask);
+
+                DetailsTask.prototype.type = DETAILS;
+
+                TaskInterface = {
+                    getByKey: function (key) {
+                        return task_registry[key];
+                    },
+
+                    makeKey: function (type, args) {
+                        args.unshift(type);
+                        return args.join(',');
+                    },
+
+                    parseKey: function (key) {
+                        var parts = key.split(','),
+                            type = parts.shift();
+
+                        if (type === LIST) {
+                            if (parts.length !== 3) {
+                                throw new Error('wrong task key: ' + key);
+                            }
+                        } else if (type === DETAILS) {
+                            if (parts.length !== 5) {
+                                throw new Error('wrong task key: ' + key);
+                            }
+                        } else {
+                            throw new Error('unknown task type: ' + type);
+                        }
+
+                        return {
+                            type: type,
+                            args: parts
+                        };
+                    },
+
+                    create: function (type, from, to, date, train, time) {
+                        var constr;
+
+                        if (type === LIST) {
+                            return new ListTask(from, to, date);
+                        } else if (type === DETAILS) {
+                            return new DetailsTask(from, to, date, train, time);
+                        }
+                    },
+
+                    getOrCreateByKey: function (key) {
+                        var task = TaskInterface.getByKey(key), o, a;
+
+                        if (!task) {
+                            try {
+                                o = TaskInterface.parseKey(key);
+                            } catch (e) {
+                                console.error(e);
+                            }
+
+                            if (o) {
+                                a = o.args;
+                                a.unshift(o.type);
+
+                                task = TaskInterface.create.apply(null, a);
+
+                                connection_state.$emit('task_emerge', task);
+                            }
+                        } else if (!task.confirmed) {
+                            connection_state.$emit('task_emerge', task);
+                        }
+
+                        return task;
+                    },
+
+                    callAll: function (callback) {
+                        angular.forEach(task_registry, callback);
+                    },
+
+                    track: function(
+                        from,
+                        to,
+                        date,
+                        train_num,
+                        dep_time,
+                        seat_type,
+                        car_num,
+                        seat_num,
+                        seat_pos
+                    ) {
+                        var task, type;
+
+                        if (train_num) {
+                            if (!dep_time) {
+                                throw new Error('departure time missed');
+                            }
+                            type = DETAILS;
+                        } else {
+                            type = LIST;
+                        }
+
+                        task = this.create(DETAILS, from, to, date, train_num, dep_time);
+
+                        task.addWatcher(
+                            train_num,
+                            dep_time,
+                            seat_type,
+                            car_num,
+                            seat_num,
+                            seat_pos
+                        );
+
+                        return task;
+                    }
+                };
+
+                connection_state.$on('reconnect', function (event) {
+                    var connection = getWSConnection();
+
+                    TaskInterface.callAll(function (task) {
+                        task.recover(connection);
+                    });
+                });
+
                 connection_state.$on('incoming_message', function (event, msg) {
                     var parts = msg.split(' '),
                         task_key = parts.shift(),
-                        task = Task.getOrCreateByKey(task_key);
+                        task = TaskInterface.getOrCreateByKey(task_key);
 
                     if (task) {
                         task.processReport(parts.join(' '));
                     }
                 });
 
-                return Task;
+                return TaskInterface;
             }
         ]);
-
-        app.service(
-            'TrackingTaskPlus',
-            [
-                'TrackingTask', 'ANY_SEAT',
-                /**
-                 * A Tracking task subclass awared about trains.
-                 */
-                function (TrackingTask, ANY_SEAT) {
-                    var Noop = angular.noop,
-                        TaskPlus = function (
-                            from, to, date, error_proof, limited
-                        ) {
-                            var instance = TaskPlus.superclass.call(
-                                this, from, to, date, error_proof, limited
-                            );
-
-                            if (instance) {
-                                return instance;
-                            }
-
-                            this.trains = {};
-                        };
-
-                    Noop.prototype = TrackingTask.prototype;
-                    TaskPlus.prototype = new Noop();
-                    TaskPlus.superclass = TrackingTask;
-                    TaskPlus.SC = TaskPlus.superclass;
-
-                    angular.forEach(
-                        TrackingTask,
-                        function (prop, name) {
-                            TaskPlus[name] = prop;
-                        }
-                    );
-
-                    TaskPlus.generateTrainKey = function (
-                        train_number, dep_date, dep_time
-                    ) {
-                        return [dep_date, dep_time, train_number].join('_');
-                    };
-
-                    TaskPlus.prototype.makeTrainKey = function (
-                        train_number, dep_time
-                    ) {
-                        return TaskPlus.generateTrainKey(
-                            train_number, this.input.date, dep_time
-                        );
-                    };
-
-                    TaskPlus.prototype.acceptWatcher = function (watcher) {
-                        var train, train_key;
-
-                        watcher = TaskPlus.SC.prototype.acceptWatcher.call(
-                            this, watcher
-                        );
-
-                        if (watcher) {
-                            train_key = this.makeTrainKey(
-                                watcher.input.train_num, watcher.input.dep_time
-                            );
-
-                            if (this.trains[train_key] === undefined) {
-                                this.trains[train_key] = {
-                                    train_number: watcher.input.train_num,
-                                    dep_time: watcher.input.dep_time,
-                                    watchers: [],
-                                    departured: false,
-                                    omni: false
-                                };
-                            }
-
-                            train = this.trains[train_key];
-                            watcher.train_key = train_key;
-
-                            train.watchers.push(watcher);
-                        }
-
-                        return watcher;
-                    };
-
-                    TaskPlus.prototype.onDeparture = function (data) {
-                        angular.forEach(
-                            data,
-                            function (dep_time, train_number) {
-                                var train_key = this.makeTrainKey(
-                                    train_number, dep_time
-                                );
-
-                                if (this.trains[train_key]) {
-                                    this.trains[train_key].departured = true;
-                                } else {
-                                    console.warn(train_key);
-                                }
-                            }.bind(this)
-                        );
-                    };
-
-                    TaskPlus.prototype.removeWatcher = function (watcher) {
-                        var train = this.trains[watcher.train_key],
-                            train_index = train.watchers.indexOf(watcher),
-                            result = TaskPlus.SC.prototype.removeWatcher.call(
-                                this, watcher
-                            );
-
-                        if (train_index !== -1) {
-                            train.watchers.splice(train_index, 1);
-                        }
-
-                        if (train.watchers.length === 0) {
-                            delete this.trains[watcher.train_key];
-                        }
-
-                        return result;
-                    };
-
-                    TaskPlus.prototype.removeTrainByKey = function (train_key) {
-                        if (this.trains[train_key]) {
-                            angular.forEach(
-                                this.trains[train_key].watchers,
-                                TaskPlus.SC.prototype.removeWatcher.bind(this)
-                            );
-                        }
-
-                        delete this.trains[train_key];
-                    };
-
-                    TaskPlus.prototype.askForDetails = function (
-                        train_number, dep_time
-                    ) {
-                        var train_key = this.makeTrainKey(
-                                train_number, dep_time
-                            );
-
-                        angular.forEach(
-                            this.trains[train_key].watchers,
-                            function (watcher) {
-                                watcher.accept();
-                            }
-                        );
-
-                        if (this.trains[train_key]) {
-                            getWSConnection().send(
-                                [
-                                    'get_details',
-                                    this.key,
-                                    train_number,
-                                    dep_time
-                                ].join(' ')
-                            );
-                            this.waiting_for_details = true;
-                        } else {
-                            console.warn(train_key);
-                        }
-                    };
-
-                    TaskPlus.prototype.getTrainsCount = function () {
-                        return Object.keys(this.trains).length;
-                    };
-
-                    TaskPlus.prototype.GRAMMAR.push(
-                        [
-                            /^details (.+)$/,
-                            function (json_str) {
-                                var data = JSON.parse(json_str),
-                                    train_number = data.info.number,
-                                    dep_time = data.info.time0,
-                                    train_key = this.makeTrainKey(
-                                        train_number, dep_time
-                                    );
-
-                                this.waiting_for_details = false;
-
-                                if (this.onTrainDetails) {
-                                    this.onTrainDetails(train_key, data);
-                                }
-                            }
-                        ],
-                        [
-                            /^vanished (\S+) (\d{2}:\d{2})$/,
-                            function (train_number, dep_time) {
-                                var train_key = this.makeTrainKey(
-                                        train_number, dep_time
-                                    );
-
-                                this.waiting_for_details = false;
-
-                                angular.forEach(
-                                    this.trains[train_key].watchers,
-                                    function (watcher) {
-                                        if (watcher.isAccepted()) {
-                                            watcher.restart();
-                                        }
-                                    }
-                                );
-                            }
-                        ],
-                        [
-                            /^dep (.+)$/,
-                            function (json_str) {
-                                var data = JSON.parse(json_str);
-
-                                angular.forEach(
-                                    data,
-                                    function (dep_time, train_number) {
-                                        var train_key = this.makeTrainKey(
-                                            train_number, dep_time
-                                        );
-
-                                        if (this.trains[train_key]) {
-                                            this.trains[
-                                                train_key
-                                            ].departured = true;
-
-                                            if (this.onTrainDeparture) {
-                                                this.onTrainDeparture(
-                                                    train_key
-                                                );
-                                            }
-                                        } else {
-                                            console.warn(train_key);
-                                        }
-                                    }.bind(this)
-                                );
-                            }
-                        ]
-                    );
-
-                    return TaskPlus;
-                }
-            ]
-        );
-
 
         app.service('watchWSState', function () {
             return function (expr, callback) {
@@ -1105,7 +1170,7 @@
         });
 
         app.service('CYTConnect', function () {
-            return function (email, client_name, checking_code, task_class) {
+            return function (email, client_name, checking_code) {
                 var conn = getWSConnection();
 
                 conn.auth_credentials = {
@@ -1113,10 +1178,6 @@
                     checking_code: checking_code,
                     client_name: client_name
                 };
-
-                if (task_class) {
-                    connection_state.task_class = task_class;
-                }
 
                 if (!connection_state.connected) {
                     conn.login();
