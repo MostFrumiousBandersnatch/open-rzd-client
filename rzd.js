@@ -622,7 +622,7 @@
                     var args = ['watch', this.key, w.key];
 
                     if (this.error_proof) {
-                        args.push('ignore:NOT_FOUND');
+                        args.push('ignore:NOT_FOUND,NEGATIVE_RESPONSE');
                     }
 
                     connection = connection || getWSConnection();
@@ -792,13 +792,11 @@
                         if (res !== null) {
                             callback.apply(this, res.splice(1));
 
-                            if (this.onUpdate) {
-                                //this.onUpdate();
-                            }
-                            return;
+                            return true;
                         }
                     }
                     console.log('not parsed');
+                    return false;
                 };
 
                 ListTask = function (from, to, date) {
@@ -1109,18 +1107,13 @@
                         seat_num,
                         seat_pos
                     ) {
-                        var task, type;
+                        var task, type = LIST;
 
-                        if (train_num) {
-                            if (!dep_time) {
-                                throw new Error('departure time missed');
-                            }
+                        if (train_num && (car_num || seat_num || seat_pos)) {
                             type = DETAILS;
-                        } else {
-                            type = LIST;
                         }
 
-                        task = this.create(DETAILS, from, to, date, train_num, dep_time);
+                        task = this.create(type, from, to, date, train_num, dep_time);
 
                         task.addWatcher(
                             train_num,
@@ -1149,7 +1142,7 @@
                         task = TaskInterface.getOrCreateByKey(task_key);
 
                     if (task) {
-                        task.processReport(parts.join(' '));
+                        event.task_report = task.processReport(parts.join(' '));
                     }
                 });
 
