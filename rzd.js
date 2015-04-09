@@ -1113,7 +1113,9 @@
                             type = DETAILS;
                         }
 
-                        task = this.create(type, from, to, date, train_num, dep_time);
+                        task = TaskInterface.create(
+                            type, from, to, date, train_num, dep_time
+                        );
 
                         task.addWatcher(
                             train_num,
