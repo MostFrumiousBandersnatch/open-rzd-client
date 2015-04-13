@@ -137,7 +137,7 @@
             Watcher.prototype.isDetailed = function () {
                 return (
                     !this.isGreedy() &&
-                    (this.input.seat_pos || this.input.car_num)
+                    (this.input.seat_pos || this.input.car_num || this.seat_num)
                 );
             };
 
@@ -815,16 +815,10 @@
 
                 ListTask.prototype.type = LIST;
 
-                ListTask.generateTrainKey = function (
-                    train_number, dep_date, dep_time
-                ) {
-                    return [dep_date, dep_time, train_number].join('_');
-                };
-
                 ListTask.prototype.makeTrainKey = function (
                     train_number, dep_time
                 ) {
-                    return ListTask.generateTrainKey(
+                    return TaskInterface.makeTrainKey(
                         train_number, this.input.date, dep_time
                     );
                 };
@@ -1019,11 +1013,18 @@
                     this.train = train;
                     this.dept_time = time;
                     this.list_key = TaskInterface.makeKey(LIST, [from, to, date]);
+                    this.train_key = this.getTrainKey();
                 };
 
                 _ext_(DetailsTask, AbstractTask);
 
                 DetailsTask.prototype.type = DETAILS;
+
+                DetailsTask.prototype.getTrainKey = function () {
+                    return TaskInterface.makeTrainKey(
+                        this.train, this.input.date, this.dept_time
+                    );
+                };
 
                 TaskInterface = {
                     getByKey: function (key) {
@@ -1033,6 +1034,12 @@
                     makeKey: function (type, args) {
                         args.unshift(type);
                         return args.join(',');
+                    },
+
+                    makeTrainKey: function (
+                        train_number, dep_date, dep_time
+                    ) {
+                        return [dep_date, dep_time, train_number].join('_');
                     },
 
                     parseKey: function (key) {
@@ -1113,9 +1120,7 @@
                             type = DETAILS;
                         }
 
-                        task = TaskInterface.create(
-                            type, from, to, date, train_num, dep_time
-                        );
+                        task = this.create(type, from, to, date, train_num, dep_time);
 
                         task.addWatcher(
                             train_num,
