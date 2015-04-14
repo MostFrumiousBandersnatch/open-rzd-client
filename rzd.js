@@ -622,7 +622,7 @@
                     var args = ['watch', this.key, w.key];
 
                     if (this.error_proof) {
-                        args.push('ignore:NOT_FOUND,NEGATIVE_RESPONSE');
+                        args.push('ignore:NOT_FOUND,NO_SEATS');
                     }
 
                     connection = connection || getWSConnection();
