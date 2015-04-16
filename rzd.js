@@ -698,9 +698,7 @@
                                 this.result.errors = angular.fromJson(
                                     error_json
                                 );
-                                if (this.onFailure) {
-                                    this.onFailure();
-                                }
+                                connection_state.$emit('failure', this);
                             }
                         }
                     ],
@@ -726,7 +724,7 @@
                         /^found (.+)$/,
                         function (json_str) {
                             var watchers = angular.fromJson(json_str),
-                                watchers_got_succeeded = [];
+                                succeeded_watchers = [];
 
                             angular.forEach(
                                 watchers,
@@ -738,16 +736,13 @@
                                             cars_found
                                         )
                                     ) {
-                                        watchers_got_succeeded.push(watcher);
+                                        succeeded_watchers.push(watcher);
                                     }
                                 }.bind(null, this)
                             );
 
-                            if (watchers_got_succeeded.length > 0 &&
-                                this.onSuccess) {
-                                this.onSuccess(
-                                    watchers_got_succeeded
-                                );
+                            if (succeeded_watchers.length > 0) {
+                                connection_state.$emit('found', this, succeeded_watchers);
                             }
                         }
                     ],
@@ -766,15 +761,26 @@
                                 }
                             }.bind(null, this));
 
-                            if (this.onTrainsLost) {
-                                this.onTrainsLost(watchers);
-                            }
+                            connection_state.$emit('lost', this, watchers);
                         }
                     ],
                     [
                         /^fork (.+)$/,
-                        function (forked_task_key) {
-                            forked_task_registry[forked_task_key] = this;
+                        angular.noop
+                    ],
+                    [
+                        /^details (.+)$/,
+                        function (json_str) {
+                            var data = JSON.parse(json_str),
+                                train_number = data.info.number,
+                                dep_time = data.info.time0,
+                                train_key = this.makeTrainKey(
+                                    train_number, dep_time
+                                );
+
+                            this.waiting_for_details = false;
+
+                            connection_state.$emit('train_details', this, train_key, data);
                         }
                     ]
                 ];
@@ -791,12 +797,15 @@
 
                         if (res !== null) {
                             callback.apply(this, res.splice(1));
-
                             return true;
                         }
                     }
                     console.log('not parsed');
                     return false;
+                };
+
+                AbstractTask.prototype.askForDetails = function () {
+                    throw new Error('Not implemented');
                 };
 
                 ListTask = function (from, to, date) {
@@ -935,23 +944,6 @@
 
                 ListTask.prototype.GRAMMAR.push(
                     [
-                        /^details (.+)$/,
-                        function (json_str) {
-                            var data = JSON.parse(json_str),
-                                train_number = data.info.number,
-                                dep_time = data.info.time0,
-                                train_key = this.makeTrainKey(
-                                    train_number, dep_time
-                                );
-
-                            this.waiting_for_details = false;
-
-                            if (this.onTrainDetails) {
-                                this.onTrainDetails(train_key, data);
-                            }
-                        }
-                    ],
-                    [
                         /^vanished (\S+) (\d{2}:\d{2})$/,
                         function (train_number, dep_time) {
                             var train_key = this.makeTrainKey(
@@ -987,11 +979,7 @@
                                             train_key
                                         ].departured = true;
 
-                                        if (this.onTrainDeparture) {
-                                            this.onTrainDeparture(
-                                                train_key
-                                            );
-                                        }
+                                        connection_state.$emit('train_details', this, train_key);
                                     } else {
                                         console.warn(train_key);
                                     }
@@ -1011,7 +999,7 @@
                     }
 
                     this.train = train;
-                    this.dept_time = time;
+                    this.dep_time = time;
                     this.list_key = TaskInterface.makeKey(LIST, [from, to, date]);
                     this.train_key = this.getTrainKey();
                 };
@@ -1022,8 +1010,27 @@
 
                 DetailsTask.prototype.getTrainKey = function () {
                     return TaskInterface.makeTrainKey(
-                        this.train, this.input.date, this.dept_time
+                        this.train, this.input.date, this.dep_time
                     );
+                };
+
+                DetailsTask.prototype.askForDetails = function () {
+                    angular.forEach(
+                        this.watchers,
+                        function (watcher) {
+                            watcher.accept();
+                        }
+                    );
+
+                    getWSConnection().send(
+                        [
+                            'get_details',
+                            this.key,
+                            this.train,
+                            this.dep_time
+                        ].join(' ')
+                    );
+                    this.waiting_for_details = true;
                 };
 
                 TaskInterface = {
