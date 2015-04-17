@@ -942,6 +942,7 @@
                     return Object.keys(this.trains).length;
                 };
 
+                ListTask.prototype.GRAMMAR = ListTask.prototype.GRAMMAR.slice();
                 ListTask.prototype.GRAMMAR.push(
                     [
                         /^vanished (\S+) (\d{2}:\d{2})$/,
@@ -979,7 +980,7 @@
                                             train_key
                                         ].departured = true;
 
-                                        connection_state.$emit('train_details', this, train_key);
+                                        connection_state.$emit('dep', this, train_key);
                                     } else {
                                         console.warn(train_key);
                                     }
@@ -1032,6 +1033,39 @@
                     );
                     this.waiting_for_details = true;
                 };
+
+                DetailsTask.prototype.GRAMMAR = DetailsTask.prototype.GRAMMAR.slice();
+                DetailsTask.prototype.GRAMMAR.push(
+                    [
+                        /^vanished (\S+) (\d{2}:\d{2})$/,
+                        function (train_number, dep_time) {
+                            this.waiting_for_details = false;
+
+                            angular.forEach(
+                                this.watchers,
+                                function (watcher) {
+                                    if (watcher.isAccepted()) {
+                                        watcher.restart();
+                                    }
+                                }
+                            );
+                        }
+                    ],
+                    [
+                        /^dep (.+)$/,
+                        function (json_str) {
+                            var data = JSON.parse(json_str);
+
+                            angular.forEach(
+                                data,
+                                function () {
+                                    this.departured = true;
+                                    connection_state.$emit('dep', this, this.train_key);
+                                }.bind(this)
+                            );
+                        }
+                    ]
+                );
 
                 TaskInterface = {
                     getByKey: function (key) {
