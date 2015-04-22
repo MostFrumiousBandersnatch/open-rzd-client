@@ -223,19 +223,25 @@ describe('RZD open API client', function () {
     });
 
     describe('TrackingTask', function () {
-        var Task;
+        var TaskInt;
 
         beforeEach(inject(
             function (TrackingTask) {
-                Task = TrackingTask;
+                TaskInt = TrackingTask;
             }
         ));
 
         it('should make task keys properly', function () {
             expect(
-                Task.makeKey(200000, 200000, '01.01.2015')
+                TaskInt.makeKey('list', [20000000, 20004000, '01.01.2015'])
             ).toEqual(
-                'list,200000,200000,01.01.2015'
+                'list,20000000,20004000,01.01.2015'
+            );
+
+            expect(
+                TaskInt.makeKey('details', [20000000, 20004000, '01.01.2015', '054Ч', '23:40'])
+            ).toEqual(
+                'details,20000000,20004000,01.01.2015,054Ч,23:40'
             );
         });
     });
