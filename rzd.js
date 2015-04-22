@@ -144,6 +144,7 @@
             Watcher.prototype.WAITING = 0;
             Watcher.prototype.SUCCEEDED = 1;
             Watcher.prototype.ACCEPTED = 2;
+            Watcher.prototype.OUTDATED = 3;
 
             Watcher.prototype.isWaiting = function () {
                 return this.status === this.WAITING;
@@ -157,6 +158,10 @@
                 return this.status === this.ACCEPTED;
             };
 
+            Watcher.prototype.isOutdated = function () {
+                return this.status === this.OUTDATED;
+            };
+
             Watcher.prototype.claimSucceeded = function (cars_found) {
                 if (!this.isAccepted()) {
                     this.cars_found = cars_found;
@@ -165,6 +170,10 @@
                         return true;
                     }
                 }
+            };
+
+            Watcher.prototype.claimOutdated = function () {
+                this.status = this.OUTDATED;
             };
 
             Watcher.prototype.claimFailed = function () {
@@ -631,13 +640,19 @@
                 };
 
                 AbstractTask.prototype.acceptWatcherRemoval = function (w_key) {
-                    if (this.watchers[w_key] === undefined) {
-                        delete this.watchers[w_key];
+                    var watcher = this.watchers[w_key];
+
+                    delete this.watchers[w_key];
+                    if (Object.keys(this.watchers).length === 0) {
+                        this.acceptStop(true);
                     }
+                    return watcher;
                 };
 
                 AbstractTask.prototype.removeWatcher = function (watcher) {
-                    if (this.watchers[watcher.key] !== undefined &&
+                    if (watcher.isOutdated() || this.isFailed()) {
+                        this.acceptWatcherRemoval(watcher.key);
+                    } else if (this.watchers[watcher.key] !== undefined &&
                         !this.watchers[watcher.key].isSucceeded()) {
 
                         if (this.isActive() && !watcher.isAccepted()) {
@@ -675,9 +690,15 @@
                     return this;
                 };
 
-                AbstractTask.prototype.acceptStop = function () {
-                    this.state.status = this.STOPPED;
-                    delete task_registry[this.key];
+                AbstractTask.prototype.acceptStop = function (force) {
+                    if (!this.isFailed() || force) {
+                        this.state.status = this.STOPPED;
+                    }
+
+                    if (task_registry[this.key] === this) {
+                        delete task_registry[this.key];
+                    }
+
                     connection_state.$emit('task_removed', this);
                 };
 
@@ -707,8 +728,10 @@
                         angular.noop
                     ],
                     [
-                        /^\-W\:(.+)$/,
-                        AbstractTask.prototype.acceptWatcherRemoval
+                        /^\-W\:(\S+)$/,
+                        function (watcher_key) {
+                            this.acceptWatcherRemoval(watcher_key);
+                        }
                     ],
                     [
                         /^\+W\:(.+)$/,
@@ -718,7 +741,9 @@
                     ],
                     [
                         /^removed$/,
-                        AbstractTask.prototype.acceptStop
+                        function () {
+                            this.acceptStop();
+                        }
                     ],
                     [
                         /^found (.+)$/,
@@ -761,26 +786,9 @@
                                 }
                             }.bind(null, this));
 
-                            connection_state.$emit('lost', this, watchers);
-                        }
-                    ],
-                    [
-                        /^fork (.+)$/,
-                        angular.noop
-                    ],
-                    [
-                        /^details (.+)$/,
-                        function (json_str) {
-                            var data = JSON.parse(json_str),
-                                train_number = data.info.number,
-                                dep_time = data.info.time0,
-                                train_key = this.makeTrainKey(
-                                    train_number, dep_time
-                                );
-
-                            this.waiting_for_details = false;
-
-                            connection_state.$emit('train_details', this, train_key, data);
+                            if (this.onTrainsLost) {
+                                this.onTrainsLost(watchers);
+                            }
                         }
                     ]
                 ];
@@ -863,39 +871,29 @@
                     return watcher;
                 };
 
-                ListTask.prototype.onDeparture = function (data) {
-                    angular.forEach(
-                        data,
-                        function (dep_time, train_number) {
-                            var train_key = this.makeTrainKey(
-                                train_number, dep_time
-                            );
+                ListTask.prototype.acceptWatcherRemoval = function (
+                    watcher_key, dep
+                ) {
+                    var watcher = ListTask.SC.prototype.acceptWatcherRemoval.call(
+                        this, watcher_key
+                    ),
+                    train = this.trains[watcher.train_key],
+                    train_index = train.watchers.indexOf(watcher);
 
-                            if (this.trains[train_key]) {
-                                this.trains[train_key].departured = true;
-                            } else {
-                                console.warn(train_key);
-                            }
-                        }.bind(this)
-                    );
-                };
+                    if (!dep) {
+                        if (train_index !== -1) {
+                            train.watchers.splice(train_index, 1);
+                        }
 
-                ListTask.prototype.removeWatcher = function (watcher) {
-                    var train = this.trains[watcher.train_key],
-                        train_index = train.watchers.indexOf(watcher),
-                        result = ListTask.SC.prototype.removeWatcher.call(
-                            this, watcher
-                        );
-
-                    if (train_index !== -1) {
-                        train.watchers.splice(train_index, 1);
+                        if (train.watchers.length === 0) {
+                            delete this.trains[watcher.train_key];
+                        }
+                    } else {
+                        watcher.claimOutdated();
+                        train.departured = true;
                     }
 
-                    if (train.watchers.length === 0) {
-                        delete this.trains[watcher.train_key];
-                    }
-
-                    return result;
+                    return watcher;
                 };
 
                 ListTask.prototype.removeTrainByKey = function (train_key) {
@@ -945,6 +943,29 @@
                 ListTask.prototype.GRAMMAR = ListTask.prototype.GRAMMAR.slice();
                 ListTask.prototype.GRAMMAR.push(
                     [
+                        /^\-W\:(\S+) dep$/,
+                        function (watcher_key) {
+                            this.acceptWatcherRemoval(watcher_key, true);
+                        }
+                    ],
+                    [
+                        /^details (.+)$/,
+                        function (json_str) {
+                            var data = JSON.parse(json_str),
+                                train_number = data.info.number,
+                                dep_time = data.info.time0,
+                                train_key = this.makeTrainKey(
+                                    train_number, dep_time
+                                );
+
+                            this.waiting_for_details = false;
+
+                            if (this.onTrainDetails) {
+                                this.onTrainDetails(train_key, data);
+                            }
+                        }
+                    ],
+                    [
                         /^vanished (\S+) (\d{2}:\d{2})$/,
                         function (train_number, dep_time) {
                             var train_key = this.makeTrainKey(
@@ -960,31 +981,6 @@
                                         watcher.restart();
                                     }
                                 }
-                            );
-                        }
-                    ],
-                    [
-                        /^dep (.+)$/,
-                        function (json_str) {
-                            var data = JSON.parse(json_str);
-
-                            angular.forEach(
-                                data,
-                                function (dep_time, train_number) {
-                                    var train_key = this.makeTrainKey(
-                                        train_number, dep_time
-                                    );
-
-                                    if (this.trains[train_key]) {
-                                        this.trains[
-                                            train_key
-                                        ].departured = true;
-
-                                        connection_state.$emit('dep', this, train_key);
-                                    } else {
-                                        console.warn(train_key);
-                                    }
-                                }.bind(this)
                             );
                         }
                     ]
@@ -1008,6 +1004,25 @@
                 _ext_(DetailsTask, AbstractTask);
 
                 DetailsTask.prototype.type = DETAILS;
+                DetailsTask.prototype.GRAMMAR = DetailsTask.prototype.GRAMMAR.slice();
+
+                DetailsTask.prototype.GRAMMAR.push(
+                    [
+                        /^vanished (\S+) (\d{2}:\d{2})$/,
+                        function (train_number, dep_time) {
+                            this.waiting_for_details = false;
+
+                            angular.forEach(
+                                this.watchers,
+                                function (watcher) {
+                                    if (watcher.isAccepted()) {
+                                        watcher.restart();
+                                    }
+                                }
+                            );
+                        }
+                    ]
+                );
 
                 DetailsTask.prototype.getTrainKey = function () {
                     return TaskInterface.makeTrainKey(
@@ -1030,7 +1045,7 @@
                             this.train,
                             this.dep_time
                         ].join(' ')
-                    );
+                     );
                     this.waiting_for_details = true;
                 };
 
