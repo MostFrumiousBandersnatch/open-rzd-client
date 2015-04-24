@@ -1121,7 +1121,8 @@
                     },
 
                     create: function (type, from, to, date, train, time) {
-                        var constr;
+                        from = Number(from);
+                        to = Number(to);
 
                         if (type === LIST) {
                             return new ListTask(from, to, date);
