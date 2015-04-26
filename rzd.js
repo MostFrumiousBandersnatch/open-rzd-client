@@ -639,13 +639,21 @@
                     connection.send(args.join(' '));
                 };
 
-                AbstractTask.prototype.acceptWatcherRemoval = function (w_key) {
-                    var watcher = this.watchers[w_key];
+                AbstractTask.prototype.acceptWatcherExpiration = function (
+                    watcher
+                ) {
+                    watcher.claimOutdated();
+                };
 
-                    delete this.watchers[w_key];
+                AbstractTask.prototype.acceptWatcherRemoval = function (
+                    watcher
+                ) {
+                    delete this.watchers[watcher.key];
+
                     if (Object.keys(this.watchers).length === 0) {
                         this.acceptStop(true);
                     }
+
                     return watcher;
                 };
 
@@ -728,9 +736,17 @@
                         angular.noop
                     ],
                     [
-                        /^\-W\:(\S+)$/,
-                        function (watcher_key) {
-                            this.acceptWatcherRemoval(watcher_key);
+                        /^\-W\:(\S+)(?: (dep))?$/,
+                        function (watcher_key, dep) {
+                            var watcher = this.watchers[watcher_key];
+
+                            if (watcher) {
+                                if (dep) {
+                                    this.acceptWatcherExpiration(watcher);
+                                } else {
+                                    this.acceptWatcherRemoval(watcher);
+                                }
+                            }
                         }
                     ],
                     [
@@ -871,26 +887,37 @@
                     return watcher;
                 };
 
-                ListTask.prototype.acceptWatcherRemoval = function (
-                    watcher_key, dep
+                ListTask.prototype.acceptTrainDeparture = function (train_key) {
+                    if (this.trains[train_key]) {
+                        this.trains[train_key].departured = true;
+                    }
+                };
+
+                ListTask.prototype.acceptWatcherExpiration = function (
+                    watcher
                 ) {
-                    var watcher = ListTask.SC.prototype.acceptWatcherRemoval.call(
-                        this, watcher_key
-                    ),
-                    train = this.trains[watcher.train_key],
-                    train_index = train.watchers.indexOf(watcher);
+                    ListTask.SC.prototype.acceptWatcherExpiration.call(
+                        this, watcher
+                    );
+                    this.trains[watcher.train_key].departured = true;
+                };
 
-                    if (!dep) {
-                        if (train_index !== -1) {
-                            train.watchers.splice(train_index, 1);
-                        }
+                ListTask.prototype.acceptWatcherRemoval = function (
+                    watcher
+                ) {
+                    var train = this.trains[watcher.train_key],
+                        train_index = train.watchers.indexOf(watcher);
 
-                        if (train.watchers.length === 0) {
-                            delete this.trains[watcher.train_key];
-                        }
-                    } else {
-                        watcher.claimOutdated();
-                        train.departured = true;
+                    ListTask.SC.prototype.acceptWatcherRemoval.call(
+                        this, watcher
+                    );
+
+                    if (train_index !== -1) {
+                        train.watchers.splice(train_index, 1);
+                    }
+
+                    if (train.watchers.length === 0) {
+                        delete this.trains[watcher.train_key];
                     }
 
                     return watcher;
@@ -942,12 +969,6 @@
 
                 ListTask.prototype.GRAMMAR = ListTask.prototype.GRAMMAR.slice();
                 ListTask.prototype.GRAMMAR.push(
-                    [
-                        /^\-W\:(\S+) dep$/,
-                        function (watcher_key) {
-                            this.acceptWatcherRemoval(watcher_key, true);
-                        }
-                    ],
                     [
                         /^details (.+)$/,
                         function (json_str) {
@@ -1049,6 +1070,15 @@
                     this.waiting_for_details = true;
                 };
 
+                DetailsTask.prototype.acceptWatcherExpiration = function (
+                    watcher
+                ) {
+                    DetailsTask.SC.prototype.acceptWatcherExpiration.call(
+                        this, watcher
+                    );
+                    this.departured = true;
+                };
+
                 DetailsTask.prototype.GRAMMAR = DetailsTask.prototype.GRAMMAR.slice();
                 DetailsTask.prototype.GRAMMAR.push(
                     [
@@ -1065,21 +1095,8 @@
                                 }
                             );
                         }
-                    ],
-                    [
-                        /^dep (.+)$/,
-                        function (json_str) {
-                            var data = JSON.parse(json_str);
-
-                            angular.forEach(
-                                data,
-                                function () {
-                                    this.departured = true;
-                                    connection_state.$emit('dep', this, this.train_key);
-                                }.bind(this)
-                            );
-                        }
                     ]
+                    //connection_state.$emit('dep', this, this.train_key);
                 );
 
                 TaskInterface = {
