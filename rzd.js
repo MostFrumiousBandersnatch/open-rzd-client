@@ -732,10 +732,6 @@
                         }
                     ],
                     [
-                        /^-W|stopped|has been scheduled/,
-                        angular.noop
-                    ],
-                    [
                         /^\-W\:(\S+)(?: (dep))?$/,
                         function (watcher_key, dep) {
                             var watcher = this.watchers[watcher_key];
