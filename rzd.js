@@ -809,6 +809,23 @@
                                 this.onTrainsLost(watchers);
                             }
                         }
+                    ],
+                    [
+                        /^details (.+)$/,
+                        function (json_str) {
+                            var data = JSON.parse(json_str),
+                                train_number = data.info.number,
+                                dep_time = data.info.time0,
+                                train_key = this.makeTrainKey(
+                                    train_number, dep_time
+                                );
+
+                            this.waiting_for_details = false;
+
+                            connection_state.$emit(
+                                'train_details', this, train_key, data
+                            );
+                        }
                     ]
                 ];
 
@@ -972,23 +989,6 @@
 
                 ListTask.prototype.GRAMMAR = ListTask.prototype.GRAMMAR.slice();
                 ListTask.prototype.GRAMMAR.push(
-                    [
-                        /^details (.+)$/,
-                        function (json_str) {
-                            var data = JSON.parse(json_str),
-                                train_number = data.info.number,
-                                dep_time = data.info.time0,
-                                train_key = this.makeTrainKey(
-                                    train_number, dep_time
-                                );
-
-                            this.waiting_for_details = false;
-
-                            if (this.onTrainDetails) {
-                                this.onTrainDetails(train_key, data);
-                            }
-                        }
-                    ],
                     [
                         /^vanished (\S+) (\d{2}:\d{2})$/,
                         function (train_number, dep_time) {
