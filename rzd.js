@@ -58,6 +58,11 @@
         'HH:mm'
     );
 
+    /**
+     * RZD relies on Europe/Moscow.
+     */
+    app.value('RZD_TZ', '+3000');
+
     app.factory('encodeDict', function () {
         return function (o, skip_enc, skip_empty_items) {
             var key, res = [];
@@ -431,11 +436,13 @@
             '$filter',
             'RZD_DATE_FORMAT',
             'RZD_TIME_FORMAT',
+            'RZD_TZ',
             function (
                       $resource,
                       $filter,
                       RZD_DATE_FORMAT,
-                      RZD_TIME_FORMAT
+                      RZD_TIME_FORMAT,
+                      RZD_TZ
             ) {
                 return $resource(["http://",
                     GLOBAL_CONFIG.api_host,
@@ -457,10 +464,10 @@
                                 for_date = rows[0].key[3];
                                 now = Date.now();
                                 current_date = $filter('date')(
-                                    now, RZD_DATE_FORMAT
+                                    now, RZD_DATE_FORMAT, RZD_TZ
                                 );
                                 current_time = $filter('date')(
-                                    now, RZD_TIME_FORMAT
+                                    now, RZD_TIME_FORMAT, RZD_TZ
                                 );
                                 not_this_day = for_date !== current_date;
 
