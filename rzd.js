@@ -658,7 +658,7 @@
                     delete this.watchers[watcher.key];
 
                     if (Object.keys(this.watchers).length === 0) {
-                        this.acceptStop(true);
+                        this.acceptStop(true, 'exhausted');
                     }
 
                     return watcher;
@@ -666,7 +666,7 @@
 
                 AbstractTask.prototype.removeWatcher = function (watcher) {
                     if (watcher.isOutdated() || this.isFailed()) {
-                        this.acceptWatcherRemoval(watcher.key);
+                        this.acceptWatcherRemoval(watcher);
                     } else if (this.watchers[watcher.key] !== undefined &&
                         !this.watchers[watcher.key].isSucceeded()) {
 
@@ -705,13 +705,17 @@
                     return this;
                 };
 
-                AbstractTask.prototype.acceptStop = function (force) {
+                AbstractTask.prototype.acceptStop = function (force, reason) {
                     if (!this.isFailed() || force) {
                         this.state.status = this.STOPPED;
                     }
 
                     if (task_registry[this.key] === this) {
                         delete task_registry[this.key];
+                    }
+
+                    if (reason) {
+                        this.removal_reason = reason;
                     }
 
                     connection_state.$emit('task_removed', this);
@@ -759,9 +763,9 @@
                         }
                     ],
                     [
-                        /^removed$/,
-                        function () {
-                            this.acceptStop();
+                        /^removed(?: ([a-z]+))?$/,
+                        function (reason) {
+                            this.acceptStop(false, reason);
                         }
                     ],
                     [
