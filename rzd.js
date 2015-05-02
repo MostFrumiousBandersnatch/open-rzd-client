@@ -649,7 +649,20 @@
                 AbstractTask.prototype.acceptWatcherExpiration = function (
                     watcher
                 ) {
+                    var outdated = true;
+
                     watcher.claimOutdated();
+                    angular.forEach(this.watchers, function (watcher) {
+                        outdated = outdated && watcher.isOutdated();
+                    });
+
+                    if (outdated) {
+                        this.state.status = this.FATAL_FAILURE;
+                        this.result.errors = [{
+                            code: 'OUTDATED',
+                            message: 'поезда уже ушли'
+                        }];
+                    }
                 };
 
                 AbstractTask.prototype.acceptWatcherRemoval = function (
@@ -699,7 +712,7 @@
                     if (this.isActive()) {
                         getWSConnection().send(['remove', this.key].join(' '));
                     } else {
-                        this.acceptStop();
+                        this.acceptStop(true);
                     }
 
                     return this;
@@ -825,6 +838,9 @@
                                 );
 
                             this.waiting_for_details = false;
+                            angular.forEach(data.accepted, function (w_key) {
+                                this.watchers[w_key].accept();
+                            });
 
                             connection_state.$emit(
                                 'train_details', this, train_key, data
@@ -1026,7 +1042,7 @@
                     this.train = train;
                     this.dep_time = time;
                     this.list_key = TaskInterface.makeKey(LIST, [from, to, date]);
-                    this.train_key = this.getTrainKey();
+                    this.train_key = this.makeTrainKey();
                 };
 
                 _ext_(DetailsTask, AbstractTask);
@@ -1052,7 +1068,7 @@
                     ]
                 );
 
-                DetailsTask.prototype.getTrainKey = function () {
+                DetailsTask.prototype.makeTrainKey = function () {
                     return TaskInterface.makeTrainKey(
                         this.train, this.input.date, this.dep_time
                     );
@@ -1083,7 +1099,11 @@
                     DetailsTask.SC.prototype.acceptWatcherExpiration.call(
                         this, watcher
                     );
-                    this.departured = true;
+                    this.state.status = this.FATAL_FAILURE;
+                    this.result.errors = [{
+                        code: 'OUTDATED',
+                        message: 'поезд уже ушел'
+                    }];
                 };
 
                 DetailsTask.prototype.GRAMMAR = DetailsTask.prototype.GRAMMAR.slice();
