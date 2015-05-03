@@ -756,13 +756,15 @@
                         }
                     ],
                     [
-                        /^\-W\:(\S+)(?: (dep))?$/,
-                        function (watcher_key, dep) {
+                        /^\-W\:(\S+)(?: (\w+))?$/,
+                        function (watcher_key, status) {
                             var watcher = this.watchers[watcher_key];
 
                             if (watcher) {
-                                if (dep) {
+                                if (status === 'outdated') {
                                     this.acceptWatcherExpiration(watcher);
+                                } else if (status === 'accepted') {
+                                    watcher.accept();
                                 } else {
                                     this.acceptWatcherRemoval(watcher);
                                 }
@@ -838,9 +840,6 @@
                                 );
 
                             this.waiting_for_details = false;
-                            angular.forEach(data.accepted, function (w_key) {
-                                this.watchers[w_key].accept();
-                            });
 
                             connection_state.$emit(
                                 'train_details', this, train_key, data
