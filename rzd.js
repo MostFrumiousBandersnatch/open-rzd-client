@@ -824,9 +824,7 @@
                                 }
                             }.bind(null, this));
 
-                            if (this.onTrainsLost) {
-                                this.onTrainsLost(watchers);
-                            }
+                            connection_state.$emit('lost', this, watchers);
                         }
                     ],
                     [
