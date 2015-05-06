@@ -549,6 +549,7 @@
                     FAILURE: 2,
                     STOPPED: 4,
                     FATAL_FAILURE: 6,
+                    DETACHED: 7,
                     TRACKING_ERRORS_LIMIT: 5,
                     type: undefined
                 };
@@ -678,7 +679,8 @@
                 };
 
                 AbstractTask.prototype.removeWatcher = function (watcher) {
-                    if (watcher.isOutdated() || this.isFailed()) {
+                    //TODO: fix the "ghost task" issue
+                    if (watcher.isOutdated() || watcher.isAccepted() || this.isFailed()) {
                         this.acceptWatcherRemoval(watcher);
                     } else if (this.watchers[watcher.key] !== undefined &&
                         !this.watchers[watcher.key].isSucceeded()) {
@@ -708,6 +710,10 @@
                     return this.state.status === this.IN_PROGRESS;
                 };
 
+                AbstractTask.prototype.isDetached = function () {
+                    return this.state.status === this.DETACHED;
+                };
+
                 AbstractTask.prototype.stop = function () {
                     if (this.isActive()) {
                         getWSConnection().send(['remove', this.key].join(' '));
@@ -717,6 +723,20 @@
 
                     return this;
                 };
+
+                AbstractTask.prototype.detach = function () {
+                    if (this.isActive()) {
+                        this.state.status = this.DETACHED;
+                        this.confirmed = false;
+                    }
+                }
+
+                AbstractTask.prototype.attach = function () {
+                    if (this.isDetached()) {
+                        this.state.status = this.IN_PROGRESS;
+                        this.confirmed = true;
+                    }
+                }
 
                 AbstractTask.prototype.acceptStop = function (force, reason) {
                     if (!this.isFailed() || force) {
@@ -780,7 +800,11 @@
                     [
                         /^removed(?: ([a-z]+))?$/,
                         function (reason) {
-                            this.acceptStop(false, reason);
+                            if (reason === 'accepted') {
+                                this.detach();
+                            } else {
+                                this.acceptStop(false, reason);
+                            }
                         }
                     ],
                     [
@@ -1191,7 +1215,11 @@
                                 connection_state.$emit('task_emerge', task);
                             }
                         } else if (!task.confirmed) {
-                            connection_state.$emit('task_emerge', task);
+                            if (task.isDetached()) {
+                                task.attach()
+                            } else {
+                                connection_state.$emit('task_emerge', task);
+                            }
                         }
 
                         return task;
