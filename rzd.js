@@ -549,7 +549,6 @@
                     FAILURE: 2,
                     STOPPED: 4,
                     FATAL_FAILURE: 6,
-                    DETACHED: 7,
                     TRACKING_ERRORS_LIMIT: 5,
                     type: undefined
                 };
@@ -580,15 +579,18 @@
                 };
 
                 AbstractTask.prototype.restart = function () {
-                    this.state.status = this.IN_PROGRESS;
+                    if (this.isRecoverable()) {
+                        this.state.status = this.IN_PROGRESS;
+                        this.confirmed = false;
 
-                    angular.forEach(
-                        this.watchers,
-                        function (watcher) {
-                            watcher.restart(true);
-                        }
-                    );
-                    this.recover();
+                        angular.forEach(
+                            this.watchers,
+                            function (watcher) {
+                                watcher.restart(true);
+                            }
+                        );
+                        this.recover();
+                    }
                 };
 
                 AbstractTask.prototype.restartWatcher = function (watcher) {
@@ -679,7 +681,6 @@
                 };
 
                 AbstractTask.prototype.removeWatcher = function (watcher) {
-                    //TODO: fix the "ghost task" issue
                     if (watcher.isOutdated() || watcher.isAccepted() || this.isFailed()) {
                         this.acceptWatcherRemoval(watcher);
                     } else if (this.watchers[watcher.key] !== undefined &&
@@ -710,9 +711,6 @@
                     return this.state.status === this.IN_PROGRESS;
                 };
 
-                AbstractTask.prototype.isDetached = function () {
-                    return this.state.status === this.DETACHED;
-                };
 
                 AbstractTask.prototype.stop = function () {
                     if (this.isActive()) {
@@ -724,34 +722,22 @@
                     return this;
                 };
 
-                AbstractTask.prototype.detach = function () {
-                    if (this.isActive()) {
-                        this.state.status = this.DETACHED;
-                        this.confirmed = false;
-                    }
-                }
-
-                AbstractTask.prototype.attach = function () {
-                    if (this.isDetached()) {
-                        this.state.status = this.IN_PROGRESS;
-                        this.confirmed = true;
-                    }
-                }
 
                 AbstractTask.prototype.acceptStop = function (force, reason) {
-                    if (!this.isFailed() || force) {
-                        this.state.status = this.STOPPED;
-                    }
-
-                    if (task_registry[this.key] === this) {
-                        delete task_registry[this.key];
-                    }
-
                     if (reason) {
                         this.removal_reason = reason;
                     }
 
-                    connection_state.$emit('task_removed', this);
+                    if (!this.isFailed() || force) {
+                        this.state.status = this.STOPPED;
+
+                        if (task_registry[this.key] === this) {
+                            delete task_registry[this.key];
+                            connection_state.$emit('task_removed', this);
+                        }
+                    } else {
+                        this.confirmed = false;
+                    }
                 };
 
                 AbstractTask.prototype.GRAMMAR = [
@@ -801,7 +787,7 @@
                         /^removed(?: ([a-z]+))?$/,
                         function (reason) {
                             if (reason === 'accepted') {
-                                this.detach();
+                                this.confirmed = false;
                             } else {
                                 this.acceptStop(false, reason);
                             }
@@ -1211,15 +1197,11 @@
                                 a.unshift(o.type);
 
                                 task = TaskInterface.create.apply(null, a);
-
-                                connection_state.$emit('task_emerge', task);
                             }
                         } else if (!task.confirmed) {
-                            if (task.isDetached()) {
-                                task.attach()
-                            } else {
-                                connection_state.$emit('task_emerge', task);
-                            }
+                            task.confirmed = true;
+                            console.log('task_emerge');
+                            connection_state.$emit('task_emerge', task);
                         }
 
                         return task;
