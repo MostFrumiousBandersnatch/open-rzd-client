@@ -457,7 +457,6 @@
                         transformResponse: function (data) {
                             var rows = data.rows,
                                 for_date, now, current_date, current_time,
-                                not_this_day,
                                 result = [];
 
                             if (rows.length > 0) {
@@ -469,11 +468,14 @@
                                 current_time = $filter('date')(
                                     now, RZD_TIME_FORMAT, RZD_TZ
                                 );
-                                not_this_day = for_date !== current_date;
 
                                 rows.forEach(function (item) {
-                                    if (not_this_day ||
-                                        item.value.time0 > current_time) {
+                                    if (
+                                        for_date > current_date ||
+                                        (
+                                            for_date === current_date &&
+                                            item.value.time0 > current_time)
+                                        ) {
                                         result.push(item.value);
                                     }
                                 });

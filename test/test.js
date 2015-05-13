@@ -141,12 +141,20 @@ describe('RZD open API client', function () {
             }
         );
 
-        it('should return list of trains',
+        it('should return full list of trains for this very day',
             testTrainListForJune22th(new Date(2014, 5, 22, 15, 0, 0), 2)
         );
 
         it('should not return train already departured at 17:38',
             testTrainListForJune22th(new Date(2014, 5, 22, 17, 40, 0), 1)
+        );
+
+        it('should return empty list in a back-to-the-future case',
+            testTrainListForJune22th(new Date(2014, 5, 23, 22, 0, 0), 0)
+        );
+
+        it('should return full list of trains for the passed day',
+            testTrainListForJune22th(new Date(2014, 5, 21, 0, 0, 1), 2)
         );
     });
 
