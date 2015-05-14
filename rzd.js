@@ -559,6 +559,13 @@
                     return TaskInterface.makeKey(this.type, args);
                 };
 
+                AbstractTask.prototype.confirm = function(args) {
+                    if (!this.confirmed) {
+                        this.confirmed = true;
+                        return true;
+                    }
+                };
+
                 AbstractTask.prototype.recover = function (connection) {
                     var that = this,
                         succeeded_cnt = 0;
@@ -1200,10 +1207,6 @@
 
                                 task = TaskInterface.create.apply(null, a);
                             }
-                        } else if (!task.confirmed) {
-                            task.confirmed = true;
-                            console.log('task_emerge');
-                            connection_state.$emit('task_emerge', task);
                         }
 
                         return task;
@@ -1259,6 +1262,10 @@
                         task = TaskInterface.getOrCreateByKey(task_key);
 
                     if (task) {
+                        if (task.confirm()) {
+                            console.log('task_emerge');
+                            connection_state.$emit('task_emerge', task);
+                        }
                         event.task_report = task.processReport(parts.join(' '));
                     }
                 });
