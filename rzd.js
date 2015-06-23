@@ -506,7 +506,7 @@
                     ListTask,
                     DetailsTask;
 
-               AbstractTask = function (from, to, date) {
+                AbstractTask = function (from, to, date) {
                     var key = this.makeKey(_slice_.call(arguments)),
                         instance = TaskInterface.getByKey(key);
 
@@ -527,7 +527,8 @@
                     }
 
                     this.error_proof = true;
-                    this.limited = !directions.to[from] || directions.to[from].indexOf(to) == -1;
+                    this.limited = !directions.to[from] ||
+                        directions.to[from].indexOf(to) === -1;
 
                     this.watchers = {};
 
@@ -555,11 +556,11 @@
                     type: undefined
                 };
 
-                AbstractTask.prototype.makeKey = function(args) {
+                AbstractTask.prototype.makeKey = function (args) {
                     return TaskInterface.makeKey(this.type, args);
                 };
 
-                AbstractTask.prototype.confirm = function(args) {
+                AbstractTask.prototype.confirm = function (args) {
                     if (!this.confirmed) {
                         this.confirmed = true;
                         return true;
@@ -609,7 +610,6 @@
                         }
                     }
                 };
-
 
                 AbstractTask.prototype.addWatcher = function (
                     train_num,
@@ -824,7 +824,9 @@
                             );
 
                             if (succeeded_watchers.length > 0) {
-                                connection_state.$emit('found', this, succeeded_watchers);
+                                connection_state.$emit(
+                                    'found', this, succeeded_watchers
+                                );
                             }
                         }
                     ],
@@ -885,6 +887,10 @@
                 };
 
                 AbstractTask.prototype.askForDetails = function () {
+                    throw new Error('Not implemented');
+                };
+
+                AbstractTask.prototype.watchersByTrain = function (train_key) {
                     throw new Error('Not implemented');
                 };
 
@@ -1023,6 +1029,19 @@
                     return Object.keys(this.trains).length;
                 };
 
+                ListTask.prototype.watchersByTrain = function (train_key) {
+                    var result;
+
+                    if (train_key in this.trains) {
+                        result = this.trains[train_key].watchers;
+                    } else {
+                        console.warn(train_key);
+                        result = [];
+                    }
+
+                    return result;
+                };
+
                 ListTask.prototype.GRAMMAR = ListTask.prototype.GRAMMAR.slice();
                 ListTask.prototype.GRAMMAR.push(
                     [
@@ -1120,6 +1139,19 @@
                         code: 'OUTDATED',
                         message: 'поезд уже ушел'
                     }];
+                };
+
+                DetailsTask.prototype.watchersByTrain = function (train_key) {
+                    var result;
+
+                    if (train_key !== this.train_key) {
+                        result = this.watchers;
+                    } else {
+                        console.warn(train_key);
+                        result = [];
+                    }
+
+                    return result;
                 };
 
                 DetailsTask.prototype.GRAMMAR = DetailsTask.prototype.GRAMMAR.slice();
