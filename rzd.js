@@ -54,6 +54,11 @@
     );
 
     app.value(
+        'LEX_DATE_FORMAT',
+        'yyyy-MM-dd'
+    );
+
+    app.value(
         'RZD_TIME_FORMAT',
         'HH:mm'
     );
@@ -90,6 +95,12 @@
             });
 
             return res;
+        };
+    });
+
+    app.factory('RZDDateToLex', function () {
+        return function (date_str) {
+            return date_str.split('.').reverse().join('-');
         };
     });
 
@@ -434,15 +445,17 @@
         app.factory('StorageLookup', [
             '$resource',
             '$filter',
-            'RZD_DATE_FORMAT',
+            'LEX_DATE_FORMAT',
             'RZD_TIME_FORMAT',
             'RZD_TZ',
+            'RZDDateToLex',
             function (
                       $resource,
                       $filter,
-                      RZD_DATE_FORMAT,
+                      LEX_DATE_FORMAT,
                       RZD_TIME_FORMAT,
-                      RZD_TZ
+                      RZD_TZ,
+                      RZDDateToLex
             ) {
                 return $resource(["http://",
                     GLOBAL_CONFIG.api_host,
@@ -460,10 +473,10 @@
                                 result = [];
 
                             if (rows.length > 0) {
-                                for_date = rows[0].key[3];
+                                for_date = RZDDateToLex(rows[0].key[3]);
                                 now = Date.now();
                                 current_date = $filter('date')(
-                                    now, RZD_DATE_FORMAT, RZD_TZ
+                                    now, LEX_DATE_FORMAT, RZD_TZ
                                 );
                                 current_time = $filter('date')(
                                     now, RZD_TIME_FORMAT, RZD_TZ
