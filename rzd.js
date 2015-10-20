@@ -539,7 +539,6 @@
                         this.to = directions.map[to];
                     }
 
-                    this.error_proof = true;
                     this.limited = !directions.to[from] ||
                         directions.to[from].indexOf(to) === -1;
 
@@ -662,12 +661,7 @@
                 AbstractTask.prototype.pushWatcher = function (w, connection) {
                     var args = ['watch', this.key, w.key];
 
-                    if (this.error_proof) {
-                        args.push('ignore:NOT_FOUND,NO_SEATS');
-                    }
-
                     connection = connection || getWSConnection();
-
                     connection.send(args.join(' '));
                 };
 
