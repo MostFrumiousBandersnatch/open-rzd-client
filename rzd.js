@@ -235,6 +235,8 @@
         var task_registry = {},
             connection_state = $rootScope.$new(true),
             directions,
+            proto = 'http',
+            ws_proto = 'ws',
             getWSConnection = (function () {
                 var connection;
 
@@ -246,6 +248,11 @@
                     return connection;
                 };
             }());
+
+            if (GLOBAL_CONFIG.use_ssl) {
+                proto = 'https';
+                ws_proto = 'wss';
+            }
 
         connection_state.connected = false;
         connection_state.email_logged_in = undefined;
@@ -334,7 +341,10 @@
 
             this.preconnect_buffer = [];
 
-            this.ws = new $window.WebSocket(["ws://",
+
+
+            this.ws = new $window.WebSocket([
+                ws_proto, "://",
                 GLOBAL_CONFIG.api_host,
                 GLOBAL_CONFIG.api_prefix,
                 "ws"
@@ -383,7 +393,7 @@
         app.factory('StationsSuggester', ['$resource',
             function ($resource) {
                 return $resource([
-                    "http://",
+                    proto, "://",
                     GLOBAL_CONFIG.api_host,
                     GLOBAL_CONFIG.api_prefix,
                     "/suggester_proxy?starts_with=:startsWith"
@@ -394,7 +404,8 @@
         app.factory('TrackedStationsLookup', ['$resource',
             function ($resource) {
                 return $resource(
-                    ["http://",
+                    [
+                        proto, "://",,
                         GLOBAL_CONFIG.api_host,
                         GLOBAL_CONFIG.api_prefix,
                     "fully_tracked"
@@ -420,7 +431,7 @@
             function ($resource) {
                 return $resource(
                     [
-                        "http://",
+                        proto, "://",
                         GLOBAL_CONFIG.api_host,
                         GLOBAL_CONFIG.api_prefix,
                         "fetch/:kind"
@@ -457,7 +468,8 @@
                       RZD_TZ,
                       RZDDateToLex
             ) {
-                return $resource(["http://",
+                return $resource([
+                    proto, "://",
                     GLOBAL_CONFIG.api_host,
                     GLOBAL_CONFIG.storage_prefix,
                     'fetch/:kind'
