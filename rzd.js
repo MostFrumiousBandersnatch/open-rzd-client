@@ -112,7 +112,8 @@
                 seat_type,
                 car_num,
                 seat_num,
-                seat_pos
+                seat_pos,
+                srv_cls
             ) {
                 this.input = {
                     train_num: train_num,
@@ -120,7 +121,8 @@
                     seat_type: seat_type,
                     car_num: car_num || '',
                     seat_num: seat_num || '',
-                    seat_pos: seat_pos || ''
+                    seat_pos: seat_pos || '',
+                    srv_cls: srv_cls || ''
                 };
 
                 this.key = encodeDict(this.input, true, true);
@@ -140,7 +142,8 @@
                         o.seat_type,
                         o.car_num,
                         o.seat_num,
-                        o.seat_pos
+                        o.seat_pos,
+                        o.srv_cls
                     );
                 }
             };
@@ -641,7 +644,8 @@
                     seat_type,
                     car_num,
                     seat_num,
-                    seat_pos
+                    seat_pos,
+                    srv_cls
                 ) {
                     var w;
 
@@ -655,7 +659,8 @@
                         seat_type,
                         car_num,
                         seat_num,
-                        seat_pos
+                        seat_pos,
+                        srv_cls
                     );
 
                     if (this.watchers[w.key] === undefined) {
@@ -1276,7 +1281,8 @@
                         seat_type,
                         car_num,
                         seat_num,
-                        seat_pos
+                        seat_pos,
+                        srv_cls
                     ) {
                         var task, type = LIST;
 
@@ -1292,7 +1298,8 @@
                             seat_type,
                             car_num,
                             seat_num,
-                            seat_pos
+                            seat_pos,
+                            srv_cls
                         );
 
                         return task;
