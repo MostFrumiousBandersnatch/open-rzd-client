@@ -29,7 +29,7 @@
         'SEAT_POSITIONS',
         {
             'Плац': ['up', 'dn', 'lup', 'ldn'],
-            'Купе': ['up', 'dn']
+            'Купе': ['up', 'dn', 'fh']
         }
    );
 
@@ -39,13 +39,19 @@
             'Нижние': 'dn',
             'Верхние': 'up',
             'Нижние боковые': 'ldn',
-            'Верхние боковые': 'lup'
+            'Верхние боковые': 'lup',
+            'Full house': 'fh'
         }
     );
 
     app.value(
         'ANY_SEAT',
         'any_seat'
+    );
+
+    app.value(
+        'ANY_TRAIN',
+        'any'
     );
 
     app.value(
@@ -91,7 +97,8 @@
             angular.forEach(str.split('&'), function (s) {
                 var parts = s.split('=');
 
-                res[parts[0]] = (skip_enc && parts[1]) || decodeURIComponent(parts[1]);
+                res[parts[0]] = (skip_enc && parts[1]) ||
+                    decodeURIComponent(parts[1]);
             });
 
             return res;
@@ -104,8 +111,9 @@
         };
     });
 
-    app.service('Watcher', ['encodeDict', 'restoreDict', 'ANY_SEAT',
-        function (encodeDict, restoreDict, ANY_SEAT) {
+    app.service('Watcher', ['encodeDict', 'restoreDict',
+        'ANY_SEAT', 'ANY_TRAIN',
+        function (encodeDict, restoreDict, ANY_SEAT, ANY_TRAIN) {
             var Watcher = function (
                 train_num,
                 dep_time,
@@ -252,10 +260,10 @@
                 };
             }());
 
-            if (GLOBAL_CONFIG.use_ssl) {
-                proto = 'https';
-                ws_proto = 'wss';
-            }
+        if (GLOBAL_CONFIG.use_ssl) {
+            proto = 'https';
+            ws_proto = 'wss';
+        }
 
         connection_state.connected = false;
         connection_state.email_logged_in = undefined;
@@ -306,7 +314,7 @@
                 connection_state.$apply(function (scope) {
                     scope.fallback_enabled = msg.split(' ')[1] === 'yes';
                 });
-            }else if (msg.indexOf('open_rzd_api') === 0) {
+            } else if (msg.indexOf('open_rzd_api') === 0) {
                 //pass
             } else {
                 connection_state.$emit('incoming_message', msg);
@@ -408,10 +416,10 @@
             function ($resource) {
                 return $resource(
                     [
-                        proto, "://",,
+                        proto, "://",
                         GLOBAL_CONFIG.api_host,
                         GLOBAL_CONFIG.api_prefix,
-                    "fully_tracked"
+                        "fully_tracked"
                     ].join(''),
                     {},
                     {
@@ -474,8 +482,8 @@
                 return $resource([
                     proto, "://",
                     GLOBAL_CONFIG.api_host,
-                    GLOBAL_CONFIG.storage_prefix,
-                    'fetch/:kind'
+                    GLOBAL_CONFIG.api_prefix,
+                    'combine/:kind'
                 ].join(''), null, {
                     fetchList: {
                         method: 'GET',
@@ -488,7 +496,7 @@
                                 result = [];
 
                             if (rows.length > 0) {
-                                for_date = RZDDateToLex(rows[0].key[3]);
+                                for_date = RZDDateToLex(rows[0].date0);
                                 now = Date.now();
                                 current_date = $filter('date')(
                                     now, LEX_DATE_FORMAT, RZD_TZ
@@ -502,9 +510,9 @@
                                         for_date > current_date ||
                                         (
                                             for_date === current_date &&
-                                            item.value.time0 > current_time)
+                                            item.time0 > current_time)
                                         ) {
-                                        result.push(item.value);
+                                        result.push(item);
                                     }
                                 });
                             }
@@ -525,8 +533,8 @@
             '$window',
             'Watcher',
             'ANY_SEAT',
-
-            function ($window, Watcher, ANY_SEAT) {
+            'ANY_TRAIN',
+            function ($window, Watcher, ANY_SEAT, ANY_TRAIN) {
                 var LIST = 'list',
                     DETAILS = 'details',
                     TaskInterface,
@@ -714,7 +722,11 @@
                 };
 
                 AbstractTask.prototype.removeWatcher = function (watcher) {
-                    if (watcher.isOutdated() || watcher.isAccepted() || this.isFailed()) {
+                    if (
+                        watcher.isOutdated() ||
+                        watcher.isAccepted() ||
+                        this.isFailed()
+                    ) {
                         this.acceptWatcherRemoval(watcher);
                     } else if (this.watchers[watcher.key] !== undefined &&
                         !this.watchers[watcher.key].isSucceeded()) {
@@ -1272,7 +1284,8 @@
                         angular.forEach(task_registry, callback);
                     },
 
-                    track: function(
+                    track: function (
+                        type,
                         from,
                         to,
                         date,
@@ -1284,13 +1297,22 @@
                         seat_pos,
                         srv_cls
                     ) {
-                        var task, type = LIST;
+                        var task;
 
-                        if (train_num && (car_num || seat_num || seat_pos)) {
-                            type = DETAILS;
+                        if (!type) {
+                            if (
+                                train_num !== ANY_TRAIN &&
+                                (car_num || seat_num || seat_pos || srv_cls)
+                            ) {
+                                type = DETAILS;
+                            } else {
+                                type = LIST;
+                            }
                         }
 
-                        task = this.create(type, from, to, date, train_num, dep_time);
+                        task = this.create(
+                            type, from, to, date, train_num, dep_time
+                        );
 
                         task.addWatcher(
                             train_num,
