@@ -1,6 +1,6 @@
 {
     "name": "open-rzd-client",
-    "version": "0.3.4",
+    "version": "0.4.1",
     "dependencies": {
         "bower": "~1.2.8"
     },
