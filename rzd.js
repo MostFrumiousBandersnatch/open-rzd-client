@@ -322,7 +322,7 @@
         };
 
         WSConstructor.ws_on_close = function () {
-            console.log("Connection close");
+            console.log("Connection has been closed");
 
             connection_state.$apply(function (scope) {
                 scope.connected = false;
@@ -399,7 +399,6 @@
                 throw new Error('web socket is closed');
             }
         };
-
 
         app.factory('StationsSuggester', ['$resource',
             function ($resource) {
@@ -658,7 +657,7 @@
                     var w;
 
                     if (this.limited && seat_type !== ANY_SEAT) {
-                        throw 'Inapproperiate watcher';
+                        throw 'Inappropriate watcher';
                     }
 
                     w = new Watcher(
