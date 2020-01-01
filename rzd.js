@@ -355,10 +355,11 @@
 
 
             this.ws = new $window.WebSocket([
-                ws_proto, "://",
+                ws_proto, '://',
                 GLOBAL_CONFIG.api_host,
+                '/',
                 GLOBAL_CONFIG.api_prefix,
-                "ws"
+                '/ws'
             ].join(''));
 
             this.ws.onopen = WSConstructor.ws_on_open.bind(this);
@@ -403,10 +404,11 @@
         app.factory('StationsSuggester', ['$resource',
             function ($resource) {
                 return $resource([
-                    proto, "://",
+                    proto, '://',
                     GLOBAL_CONFIG.api_host,
+                    '/',
                     GLOBAL_CONFIG.api_prefix,
-                    "/suggester_proxy?starts_with=:startsWith"
+                    '/suggester_proxy?starts_with=:startsWith'
                 ].join(''));
             }]
         );
@@ -415,10 +417,11 @@
             function ($resource) {
                 return $resource(
                     [
-                        proto, "://",
+                        proto, '://',
                         GLOBAL_CONFIG.api_host,
+                        '/',
                         GLOBAL_CONFIG.api_prefix,
-                        "fully_tracked"
+                        '/fully_tracked'
                     ].join(''),
                     {},
                     {
@@ -441,10 +444,11 @@
             function ($resource) {
                 return $resource(
                     [
-                        proto, "://",
+                        proto, '://',
                         GLOBAL_CONFIG.api_host,
+                        '/',
                         GLOBAL_CONFIG.api_prefix,
-                        "fetch/:kind"
+                        '/fetch/:kind'
                     ].join(''),
                     null,
                     {
@@ -479,10 +483,11 @@
                       RZDDateToLex
             ) {
                 return $resource([
-                    proto, "://",
+                    proto, '://',
                     GLOBAL_CONFIG.api_host,
+                    '/',
                     GLOBAL_CONFIG.api_prefix,
-                    'combine/:kind'
+                    '/combine/:kind'
                 ].join(''), null, {
                     fetchList: {
                         method: 'GET',
@@ -490,7 +495,7 @@
                         responseType: "json",
                         isArray: true,
                         transformResponse: function (data) {
-                            var rows = data.rows,
+                            var rows = data && data.rows || [],
                                 for_date, now, current_date, current_time,
                                 result = [];
 
@@ -1342,7 +1347,7 @@
 
                     if (task) {
                         if (task.confirm()) {
-                            console.log('task_emerge');
+                            console.log('task_emerge', task);
                             connection_state.$emit('task_emerge', task);
                         }
                         event.task_report = task.processReport(parts.join(' '));

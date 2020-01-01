@@ -60,14 +60,13 @@ describe("RZD open API client", function() {
     function testTrainListForDecember31th(pseudo_now, expected_trains_count) {
       return inject(function($templateCache, $filter, RZD_TIME_FORMAT) {
         var response;
-        //https://catchyourticket.ru/api/combine/list?date=31.12.2019&from=2000000&to=2060150&cyr=1
 
         $httpBackend
           .expectGET(
             "http://" +
-              GlobalConfig.api_host +
+              GlobalConfig.api_host + "/" +
               GlobalConfig.api_prefix +
-              "combine/list?date=31.12.2019&from=2000000&to=2060150"
+              "/combine/list?date=31.12.2019&from=2000000&to=2060150"
           )
           .respond(
             JSON.parse($templateCache.get("moscow_to_izh_31.12_stored.json"))
@@ -110,9 +109,9 @@ describe("RZD open API client", function() {
       $httpBackend
         .expectGET(
           "http://" +
-            GlobalConfig.api_host +
+            GlobalConfig.api_host + "/" +
             GlobalConfig.api_prefix +
-            "combine/list?date=01.01.2015&from=2000000&to=2004000"
+            "/combine/list?date=01.01.2015&from=2000000&to=2004000"
         )
         .respond({ rows: [] });
 
