@@ -293,7 +293,7 @@
         WSConstructor.ws_on_message = function (event) {
             var msg = event.data, res, email;
 
-            console.log(msg);
+            console.log('ws <= ' + msg);
 
             if (msg.indexOf('login_result') === 0) {
                 res = msg.split(' ')[1] === 'success';
@@ -1128,7 +1128,7 @@
                 DetailsTask.prototype.GRAMMAR.push(
                     [
                         /^vanished (\S+) (\d{2}:\d{2})$/,
-                        function (train_number, dep_time) {
+                        function () {
                             this.waiting_for_details = false;
 
                             angular.forEach(
@@ -1139,6 +1139,8 @@
                                     }
                                 }
                             );
+
+                            this.state.status = this.FAILURE;
                         }
                     ]
                 );
@@ -1217,6 +1219,13 @@
                 TaskInterface = {
                     getByKey: function (key) {
                         return task_registry[key];
+                    },
+
+                    removeByKey: function (key) {
+                        if (task_registry[key]) {
+                            delete task_registry[key];
+                            console.warn(key + 'has been removed from registry');
+                        }
                     },
 
                     makeKey: function (type, args) {
